@@ -588,6 +588,7 @@ button:hover {
 	flex: 1 1 50%;
 }
 
+.source-header,
 .preview-header {
 	display: flex;
 	align-items: center;
@@ -599,6 +600,11 @@ button:hover {
 	font-weight: 600;
 	color: var(--subtext0);
 	flex-shrink: 0;
+	height: 50px;
+}
+
+.split-view:has(.preview-section.hidden) .source-header {
+	display: none;
 }
 
 textarea#editor-body {
