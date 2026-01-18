@@ -49,9 +49,10 @@ func main() {
 	r.Group(func(gr chi.Router) {
 		gr.Use(authenticate)
 
-		gr.Get("/-/list", HandleList)
+		gr.Get("/-/notes", HandleList)
 
 		gr.Post("/-/note", HandleCreate)
+		gr.Get("/-/note/{id}", HandleGet)
 		gr.Put("/-/note/{id}", HandleUpdate)
 		gr.Delete("/-/note/{id}", HandleDelete)
 	})

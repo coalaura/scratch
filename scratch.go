@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -47,6 +48,34 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, scratches)
+}
+
+func HandleGet(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r, "id")
+	if !ok {
+		abort(w, http.StatusBadRequest, "invalid id")
+
+		return
+	}
+
+	time.Sleep(2 * time.Second)
+
+	scratch, err := database.Find(r.Context(), id)
+	if err != nil {
+		abort(w, http.StatusInternalServerError, "failed to get")
+
+		log.Warnf("failed to get: %v\n", err)
+
+		return
+	}
+
+	if scratch == nil {
+		abort(w, http.StatusNotFound, "")
+
+		return
+	}
+
+	okay(w, scratch)
 }
 
 func HandleCreate(w http.ResponseWriter, r *http.Request) {

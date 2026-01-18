@@ -45,7 +45,7 @@ func ConnectToDatabase() (*Database, error) {
 	return &Database{db}, nil
 }
 
-func (d *Database) Find(ctx context.Context, id string) (*Scratch, error) {
+func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 	var (
 		sc   Scratch
 		tags string
@@ -66,7 +66,7 @@ func (d *Database) Find(ctx context.Context, id string) (*Scratch, error) {
 }
 
 func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
-	rows, err := d.QueryContext(ctx, "SELECT id, title, body, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
+	rows, err := d.QueryContext(ctx, "SELECT id, title, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 			tags string
 		)
 
-		err = rows.Scan(&sc.ID, &sc.Title, &sc.Body, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+		err = rows.Scan(&sc.ID, &sc.Title, &tags, &sc.UpdatedAt, &sc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}

@@ -9,6 +9,7 @@ const state = {
 	busy: false,
 	activeNoteId: null,
 	copyTimeout: null,
+	selectController: null,
 	lastSaved: {
 		title: "",
 		body: "",
@@ -88,7 +89,7 @@ function notify(message, type = "info") {
 	}, 3000);
 }
 
-async function api(method, path, body = null) {
+async function api(method, path, body = null, opts = {}) {
 	const headers = {
 		Authorization: `Bearer ${state.token}`,
 	};
@@ -101,6 +102,7 @@ async function api(method, path, body = null) {
 		method: method,
 		headers: headers,
 		body: body ? JSON.stringify(body) : null,
+		...opts,
 	});
 
 	if (response.status === 403) {
@@ -237,7 +239,7 @@ async function login() {
 
 async function loadNotes() {
 	try {
-		state.notes = (await api("GET", "/-/list")) || [];
+		state.notes = (await api("GET", "/-/notes")) || [];
 
 		renderSidebar();
 
@@ -319,7 +321,7 @@ function renderSidebar() {
 	}
 }
 
-function selectNote(id) {
+async function selectNote(id) {
 	state.activeNoteId = id;
 
 	localStorage.setItem("scratch_active_note", id);
@@ -330,8 +332,36 @@ function selectNote(id) {
 		return;
 	}
 
+	state.selectController?.abort();
+
+	const controller = new AbortController();
+
+	state.selectController = controller;
+
 	$emptyState.classList.add("hidden");
 	$editorContainer.classList.remove("hidden");
+
+	try {
+		const fullNote = await api("GET", `/-/note/${id}`, null, {
+			signal: controller.signal,
+		});
+
+		if (state.activeNoteId !== id) {
+			return;
+		}
+
+		Object.assign(note, fullNote);
+	} catch (err) {
+		if (controller.signal.aborted) {
+			return;
+		}
+
+		console.error(err);
+
+		notify("Failed to load note", "error");
+
+		return;
+	}
 
 	$inputTitle.value = note.title;
 	$editorBody.value = note.body;
