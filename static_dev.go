@@ -3,21 +3,16 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httputil"
 	"net/url"
-
-	"github.com/go-chi/chi/v5"
 )
 
-func frontend(r chi.Router) error {
-	target, err := url.Parse("http://127.0.0.1:3000")
-	if err != nil {
-		return err
-	}
-
+func frontend() http.Handler {
+	target, _ := url.Parse("http://localhost:3000")
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
-	r.Handle("/*", proxy)
+	log.Println("Proxying frontend requests to Rsbuild (:3000)")
 
-	return nil
+	return proxy
 }

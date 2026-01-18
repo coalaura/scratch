@@ -41,8 +41,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(log.Middleware())
 
-	err = frontend(r)
-	log.MustFail(err)
+	r.Handle("/*", frontend())
 
 	r.Get("/-/verify", HandleVerify)
 
