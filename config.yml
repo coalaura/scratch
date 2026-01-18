@@ -1,0 +1,7 @@
+server:
+  # base url of your instance (default: http://localhost:8080/)
+  url: http://localhost:8080/
+  # port to run scratch on (default: 8080)
+  port: 8080
+  # token for authentication, leave empty to disable auth (default: p4$$w0rd)
+  token: p4$$w0rd

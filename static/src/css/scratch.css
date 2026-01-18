@@ -1,0 +1,263 @@
+:root {
+	--bg-dark: #09090b;
+	--bg-panel: #18181b;
+	--border: #27272a;
+	--text-main: #e4e4e7;
+	--text-muted: #a1a1aa;
+	--accent: #22d3ee;
+	--accent-dim: #0e7490;
+	--danger: #ef4444;
+
+	--font-ui: "Inter", system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg-dark);
+	color: var(--text-main);
+	font-family: var(--font-ui);
+	height: 100vh;
+	overflow: hidden;
+}
+
+#auth-layer {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.9);
+	backdrop-filter: blur(5px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+
+.auth-box {
+	background: var(--bg-panel);
+	border: 1px solid var(--border);
+	padding: 2rem;
+	width: 100%;
+	max-width: 400px;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.auth-box h1 {
+	font-family: var(--font-mono);
+	font-size: 1.2rem;
+	color: var(--accent);
+	margin: 0;
+}
+
+input {
+	background: var(--bg-dark);
+	border: 1px solid var(--border);
+	color: var(--text-main);
+	padding: 0.75rem;
+	font-family: var(--font-mono);
+	outline: none;
+}
+
+input:focus {
+	border-color: var(--accent);
+}
+
+button {
+	background: var(--border);
+	color: var(--text-main);
+	border: none;
+	padding: 0.75rem;
+	cursor: pointer;
+	font-family: var(--font-mono);
+	font-size: 0.85rem;
+	transition: background 0.2s;
+}
+
+button:hover {
+	background: var(--accent-dim);
+	color: white;
+}
+
+.text-btn {
+	background: transparent;
+	color: var(--text-muted);
+}
+
+.text-btn:hover {
+	color: var(--danger);
+	background: transparent;
+}
+
+.layout {
+	display: flex;
+	height: 100vh;
+}
+
+.sidebar {
+	width: 300px;
+	border-right: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	background: var(--bg-panel);
+}
+
+.sidebar-header {
+	padding: 1rem;
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.brand {
+	font-family: var(--font-mono);
+	font-weight: 600;
+	letter-spacing: -0.5px;
+}
+
+.note-list {
+	flex: 1;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.note-item {
+	padding: 1rem;
+	border-bottom: 1px solid var(--border);
+	cursor: pointer;
+	transition: background 0.1s;
+}
+
+.note-item:hover {
+	background: #27272a;
+}
+
+.note-item.active {
+	border-left: 2px solid var(--accent);
+	background: #202023;
+}
+
+.note-item-title {
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.note-item-date {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	margin-top: 0.25rem;
+}
+
+.sidebar-footer {
+	padding: 1rem;
+	border-top: 1px solid var(--border);
+	text-align: center;
+}
+
+/* Main Area */
+.editor-pane {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	background: var(--bg-dark);
+}
+
+#empty-state {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	pointer-events: none;
+}
+
+#editor-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.editor-header {
+	padding: 1rem 2rem;
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background: var(--bg-dark);
+}
+
+#note-title {
+	font-size: 1.2rem;
+	font-weight: 600;
+	border: none;
+	background: transparent;
+	width: 100%;
+	margin-right: 1rem;
+}
+
+.actions {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+#save-status {
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	margin-right: 1rem;
+	text-transform: uppercase;
+}
+
+.meta-bar {
+	padding: 0.25rem 2rem;
+	border-top: 1px solid var(--border);
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	color: var(--text-muted);
+	background: var(--bg-panel);
+	display: flex;
+	gap: 1rem;
+}
+
+#cm-target {
+	flex: 1;
+	overflow: auto;
+	font-size: 16px;
+}
+
+.cm-editor {
+	height: 100%;
+}
+
+.cm-scroller {
+	font-family: var(--font-mono);
+	line-height: 1.6;
+}
+
+.cm-gutters {
+	background: var(--bg-dark) !important;
+	border-right: 1px solid var(--border) !important;
+}
+
+.hidden {
+	display: none !important;
+}
+
+.error {
+	color: var(--danger);
+	font-size: 0.8rem;
+	margin-top: 0.5rem;
+}

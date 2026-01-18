@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>Scratch</title>
+
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+	</head>
+	<body>
+		<div id="app">
+			<div id="auth-layer" class="hidden">
+				<div class="auth-box">
+					<h1>SCRATCH_ACCESS</h1>
+
+					<p>Enter authentication token to proceed.</p>
+
+					<input type="password" id="auth-token" placeholder="eyJhbGciOi..." autofocus />
+
+					<div id="auth-error" class="error"></div>
+
+					<button id="auth-btn">AUTHORIZE</button>
+				</div>
+			</div>
+
+			<div class="layout">
+				<aside class="sidebar">
+					<div class="sidebar-header">
+						<div class="brand">SCRATCH // v1</div>
+
+						<button id="new-note-btn" title="New Note">
+							<i data-lucide="plus"></i>
+						</button>
+					</div>
+
+					<div id="note-list" class="note-list"></div>
+
+					<div class="sidebar-footer">
+						<button id="logout-btn" class="text-btn">
+							LOGOUT
+						</button>
+					</div>
+				</aside>
+
+				<main class="editor-pane" id="editor-pane">
+					<div id="empty-state">SELECT OR CREATE A NOTE</div>
+
+					<div id="editor-container" class="hidden">
+						<header class="editor-header">
+							<input type="text" id="note-title" placeholder="Untitled Note" />
+
+							<div class="actions">
+								<span id="save-status">READY</span>
+
+								<button id="copy-btn" title="Copy Raw">
+									<i data-lucide="copy"></i>
+								</button>
+
+								<button id="delete-btn" title="Delete Note">
+									<i data-lucide="trash-2"></i>
+								</button>
+							</div>
+						</header>
+
+						<div id="cm-target"></div>
+
+						<div class="meta-bar">
+							<span id="note-id-display">ID: NULL</span>
+							<span id="note-tags-display"></span>
+						</div>
+					</div>
+				</main>
+			</div>
+		</div>
+	</body>
+</html>
