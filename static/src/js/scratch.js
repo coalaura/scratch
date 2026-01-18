@@ -14,6 +14,11 @@ const state = {
 		body: "",
 		tags: [],
 	},
+	layout: {
+		sidebarWidth: parseInt(localStorage.getItem("scratch_layout_sidebar_width"), 10) || 280,
+		editorWidth: parseInt(localStorage.getItem("scratch_layout_editor_width"), 10) || 0,
+		previewVisible: localStorage.getItem("scratch_layout_preview_visible") !== "false",
+	},
 };
 
 const $authLayer = document.getElementById("auth-layer"),
@@ -37,6 +42,8 @@ const $authLayer = document.getElementById("auth-layer"),
 	$deleteBtn = document.getElementById("btn-delete"),
 	$closeBtn = document.getElementById("btn-close"),
 	$copyBtn = document.getElementById("btn-copy"),
+	$openPreviewBtn = document.getElementById("btn-open-preview"),
+	$closePreviewBtn = document.getElementById("btn-close-preview"),
 	$sidebar = document.getElementById("sidebar"),
 	$editorSection = document.getElementById("editor-section"),
 	$previewSection = document.getElementById("preview-section"),
@@ -119,7 +126,7 @@ async function api(method, path, body = null) {
 	return text ? JSON.parse(text) : {};
 }
 
-function initResizer(handle, minWidth, getTargets) {
+function initResizer(handle, minWidth, getTargets, onStop) {
 	let startX, startWidths;
 
 	if (!handle) {
@@ -154,6 +161,10 @@ function initResizer(handle, minWidth, getTargets) {
 
 		document.removeEventListener("mousemove", onMove);
 		document.removeEventListener("mouseup", onUp);
+
+		if (onStop) {
+			onStop();
+		}
 	}
 
 	handle.addEventListener("mousedown", event => {
@@ -504,6 +515,38 @@ function syncScroll(source, target) {
 	}
 }
 
+function updatePreviewVisibility() {
+	if (state.layout.previewVisible) {
+		$previewSection.classList.remove("hidden");
+		$resizerSplit.classList.remove("hidden");
+		$openPreviewBtn.classList.add("hidden");
+
+		if (state.layout.editorWidth > 0) {
+			$editorSection.style.flex = `0 0 ${state.layout.editorWidth}px`;
+		} else {
+			$editorSection.style.flex = "1 1 50%";
+		}
+
+		renderPreview($editorBody.value);
+	} else {
+		$previewSection.classList.add("hidden");
+		$resizerSplit.classList.add("hidden");
+		$openPreviewBtn.classList.remove("hidden");
+
+		$editorSection.style.flex = "1";
+	}
+
+	localStorage.setItem("scratch_layout_preview_visible", state.layout.previewVisible);
+}
+
+function restoreLayout() {
+	if (state.layout.sidebarWidth) {
+		$sidebar.style.flex = `0 0 ${state.layout.sidebarWidth}px`;
+	}
+
+	updatePreviewVisibility();
+}
+
 $editorBody.addEventListener("scroll", () => {
 	syncScroll($editorBody, $previewBody);
 });
@@ -517,6 +560,8 @@ if (state.token) {
 } else {
 	showAuth();
 }
+
+restoreLayout();
 
 $loginBtn.addEventListener("click", () => {
 	login();
@@ -625,6 +670,18 @@ $copyBtn.addEventListener("click", () => {
 	});
 });
 
+$openPreviewBtn.addEventListener("click", () => {
+	state.layout.previewVisible = true;
+
+	updatePreviewVisibility();
+});
+
+$closePreviewBtn.addEventListener("click", () => {
+	state.layout.previewVisible = false;
+
+	updatePreviewVisibility();
+});
+
 $inputTitle.addEventListener("blur", () => {
 	saveIfDirty();
 });
@@ -634,7 +691,9 @@ $editorBody.addEventListener("blur", () => {
 });
 
 $editorBody.addEventListener("input", () => {
-	renderPreview($editorBody.value);
+	if (state.layout.previewVisible) {
+		renderPreview($editorBody.value);
+	}
 });
 
 $inputTag.addEventListener("keydown", event => {
@@ -651,14 +710,36 @@ $inputTag.addEventListener("blur", () => {
 	addTag($inputTag.value);
 });
 
-initResizer($resizerSidebar, 200, () => ({
-	primary: $sidebar,
-	secondary: document.querySelector(".editor-pane"),
-	container: document.querySelector(".layout"),
-}));
+initResizer(
+	$resizerSidebar,
+	200,
+	() => ({
+		primary: $sidebar,
+		secondary: document.querySelector(".editor-pane"),
+		container: document.querySelector(".layout"),
+	}),
+	() => {
+		const width = $sidebar.getBoundingClientRect().width;
 
-initResizer($resizerSplit, 300, () => ({
-	primary: $editorSection,
-	secondary: $previewSection,
-	container: $splitView,
-}));
+		state.layout.sidebarWidth = width;
+
+		localStorage.setItem("scratch_layout_sidebar_width", width);
+	}
+);
+
+initResizer(
+	$resizerSplit,
+	300,
+	() => ({
+		primary: $editorSection,
+		secondary: $previewSection,
+		container: $splitView,
+	}),
+	() => {
+		const width = $editorSection.getBoundingClientRect().width;
+
+		state.layout.editorWidth = width;
+
+		localStorage.setItem("scratch_layout_editor_width", width);
+	}
+);

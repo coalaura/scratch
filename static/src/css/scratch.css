@@ -247,6 +247,11 @@ button:hover {
 	mask-image: url("./icons/alert.svg");
 }
 
+.icon-view {
+	-webkit-mask-image: url("./icons/view.svg");
+	mask-image: url("./icons/view.svg");
+}
+
 .layout {
 	display: flex;
 	height: 100vh;
@@ -474,13 +479,36 @@ button:hover {
 	flex-shrink: 0;
 }
 
-.actions button {
+.actions button,
+.preview-header button {
 	padding: 4px;
 	width: 32px;
 	height: 32px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+}
+
+#btn-open-preview {
+	position: absolute;
+	top: 0;
+	right: 4px;
+	background: transparent;
+	border: none;
+	color: var(--subtext0);
+	padding: 4px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#btn-open-preview:hover {
+	color: var(--text);
+}
+
+.split-view:has(.preview-section:not(.hidden)) #btn-open-preview {
+	display: none;
 }
 
 #status-indicator {
@@ -541,6 +569,7 @@ button:hover {
 	display: flex;
 	overflow: hidden;
 	min-height: 0;
+	position: relative;
 }
 
 .editor-section,
@@ -557,6 +586,19 @@ button:hover {
 
 .preview-section {
 	flex: 1 1 50%;
+}
+
+.preview-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 16px;
+	background: var(--mantle);
+	border-bottom: 1px solid var(--surface0);
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--subtext0);
+	flex-shrink: 0;
 }
 
 textarea#editor-body {

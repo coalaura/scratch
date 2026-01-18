@@ -60,7 +60,7 @@
 								<button id="btn-delete" class="btn-danger" title="Delete">
 									<i class="icon icon-trash"></i>
 								</button>
-								<button id="btn-close" title="Close">
+								<button id="btn-close" title="Close Note">
 									<i class="icon icon-close"></i>
 								</button>
 							</div>
@@ -79,8 +79,20 @@
 						<div class="resizer resizer-split" id="resizer-split"></div>
 
 						<div class="preview-section" id="preview-section">
+							<div class="preview-header">
+								<span class="preview-label">PREVIEW</span>
+
+								<button id="btn-close-preview" title="Close Preview">
+									<i class="icon icon-close"></i>
+								</button>
+							</div>
+
 							<div id="preview-body"></div>
 						</div>
+
+						<button id="btn-open-preview" class="hidden" title="Open Preview">
+							<i class="icon icon-view"></i>
+						</button>
 					</div>
 				</div>
 			</main>
