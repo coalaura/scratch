@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -57,8 +56,6 @@ func HandleGet(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-
-	time.Sleep(2 * time.Second)
 
 	scratch, err := database.Find(r.Context(), id)
 	if err != nil {

@@ -341,6 +341,17 @@ async function selectNote(id) {
 	$emptyState.classList.add("hidden");
 	$editorContainer.classList.remove("hidden");
 
+	$inputTitle.value = note.title || "";
+	$editorBody.value = "";
+
+	renderTags(note.tags || []);
+
+	renderPreview("");
+
+	renderSidebar();
+
+	$splitView.classList.add("loading");
+
 	try {
 		const fullNote = await api("GET", `/-/note/${id}`, null, {
 			signal: controller.signal,
@@ -356,12 +367,16 @@ async function selectNote(id) {
 			return;
 		}
 
+		$splitView.classList.remove("loading");
+
 		console.error(err);
 
 		notify("Failed to load note", "error");
 
 		return;
 	}
+
+	$splitView.classList.remove("loading");
 
 	$inputTitle.value = note.title;
 	$editorBody.value = note.body;

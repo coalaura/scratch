@@ -781,3 +781,39 @@ textarea#editor-body {
 .hidden {
 	display: none;
 }
+
+/* Loading Overlay */
+.loader-overlay {
+	position: absolute;
+	inset: 0;
+	background: rgba(30, 30, 46, 0.6);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 50;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+
+.split-view.loading .loader-overlay {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.spinner {
+	width: 32px;
+	height: 32px;
+	border: 3px solid var(--surface1);
+	border-top-color: var(--mauve);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
