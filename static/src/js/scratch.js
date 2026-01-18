@@ -43,6 +43,8 @@ const $authLayer = document.getElementById("auth-layer"),
 	$previewSection = document.getElementById("preview-section"),
 	$splitView = document.querySelector(".split-view");
 
+let ignoreScroll = false;
+
 async function api(method, path, body = null) {
 	const headers = {
 		Authorization: `Bearer ${state.token}`,
@@ -191,6 +193,18 @@ async function loadNotes() {
 		state.notes = (await api("GET", "/-/list")) || [];
 
 		renderSidebar();
+
+		const savedId = parseInt(localStorage.getItem("scratch_active_note"), 10);
+
+		if (savedId) {
+			const exists = state.notes.some(_note => _note.id === savedId);
+
+			if (exists) {
+				selectNote(savedId);
+			} else {
+				localStorage.removeItem("scratch_active_note");
+			}
+		}
 	} catch (err) {
 		console.error(`Failed to load notes: ${err}`);
 	}
@@ -256,6 +270,8 @@ function renderSidebar() {
 
 function selectNote(id) {
 	state.activeNoteId = id;
+
+	localStorage.setItem("scratch_active_note", id);
 
 	const note = state.notes.find(_note => _note.id === id);
 
@@ -380,8 +396,8 @@ function isDirty(note) {
 		return true;
 	}
 
-	const tagsAfter = note.tags.sort(),
-		tagsBefore = last.tags.sort();
+	const tagsAfter = note.tags.toSorted(),
+		tagsBefore = last.tags.toSorted();
 
 	return tagsAfter.some((tag, idx) => tag !== tagsBefore[idx]);
 }
@@ -429,6 +445,33 @@ async function saveIfDirty() {
 	}
 }
 
+function syncScroll(source, target) {
+	if (ignoreScroll) {
+		ignoreScroll = false;
+
+		return;
+	}
+
+	const sourceMax = source.scrollHeight - source.clientHeight,
+		targetMax = target.scrollHeight - target.clientHeight;
+
+	if (sourceMax > 0 && targetMax > 0) {
+		const percentage = source.scrollTop / sourceMax;
+
+		ignoreScroll = true;
+
+		target.scrollTop = percentage * targetMax;
+	}
+}
+
+$editorBody.addEventListener("scroll", () => {
+	syncScroll($editorBody, $previewBody);
+});
+
+$previewBody.addEventListener("scroll", () => {
+	syncScroll($previewBody, $editorBody);
+});
+
 createIcons({
 	icons: icons,
 });
@@ -453,6 +496,7 @@ $inputAuth.addEventListener("keydown", event => {
 
 $logoutBtn.addEventListener("click", () => {
 	localStorage.removeItem("scratch_token");
+	localStorage.removeItem("scratch_active_note");
 
 	location.reload();
 });
@@ -499,6 +543,8 @@ $deleteBtn.addEventListener("click", async () => {
 
 		state.activeNoteId = null;
 
+		localStorage.removeItem("scratch_active_note");
+
 		$editorContainer.classList.add("hidden");
 		$emptyState.classList.remove("hidden");
 
@@ -512,6 +558,8 @@ $deleteBtn.addEventListener("click", async () => {
 
 $closeBtn.addEventListener("click", () => {
 	state.activeNoteId = null;
+
+	localStorage.removeItem("scratch_active_note");
 
 	$editorContainer.classList.add("hidden");
 	$emptyState.classList.remove("hidden");

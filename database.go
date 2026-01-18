@@ -108,10 +108,39 @@ func (d *Database) Create(sc *Scratch) error {
 	return d.QueryRow("INSERT INTO scratches (title, body, tags, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
 }
 
-func (d *Database) Update(id int64, sc *Scratch) error {
-	sc.UpdatedAt = time.Now().Unix()
+func (d *Database) Update(id int64, req *ScratchUpdateRequest) error {
+	var (
+		fields []string
+		args   []any
+	)
 
-	_, err := d.Exec("UPDATE scratches SET title = ?, body = ?, tags = ?, updated_at = ? WHERE id = ?", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, id)
+	if req.Title != nil {
+		fields = append(fields, "title = ?")
+		args = append(args, *req.Title)
+	}
+
+	if req.Body != nil {
+		fields = append(fields, "body = ?")
+		args = append(args, *req.Body)
+	}
+
+	if req.Tags != nil {
+		fields = append(fields, "tags = ?")
+		args = append(args, strings.Join(*req.Tags, ","))
+	}
+
+	if len(fields) == 0 {
+		return nil
+	}
+
+	fields = append(fields, "updated_at = ?")
+	args = append(args, time.Now().Unix())
+
+	args = append(args, id)
+
+	query := fmt.Sprintf("UPDATE scratches SET %s WHERE id = ?", strings.Join(fields, ", "))
+
+	_, err := d.Exec(query, args...)
 	return err
 }
 

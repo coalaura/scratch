@@ -10,9 +10,13 @@
 		<div id="auth-layer" class="auth-layer hidden">
 			<div class="auth-box">
 				<h1>SCRATCH</h1>
+
 				<p>Authentication required</p>
+
 				<input type="password" id="input-auth" placeholder="Access token" autofocus />
+
 				<div id="auth-error"></div>
+
 				<button id="btn-login" class="btn-primary">AUTHENTICATE</button>
 			</div>
 		</div>
@@ -24,9 +28,12 @@
 						<span class="brand">SCRATCH</span>
 						<span id="label-version" class="version"></span>
 					</div>
+
 					<button id="btn-new" title="New Note"><i data-lucide="plus"></i></button>
 				</div>
+
 				<div id="note-list" class="note-list"></div>
+
 				<div class="sidebar-footer">
 					<button id="btn-logout">LOGOUT</button>
 				</div>
@@ -41,13 +48,22 @@
 					<header class="editor-header">
 						<div class="top-bar">
 							<input type="text" id="input-title" placeholder="Untitled Note" />
+
 							<div class="actions">
 								<span id="status-indicator">READY</span>
-								<button id="btn-copy" title="Copy Source"><i data-lucide="copy"></i></button>
-								<button id="btn-delete" class="btn-danger" title="Delete"><i data-lucide="trash-2"></i></button>
-								<button id="btn-close" title="Close"><i data-lucide="x"></i></button>
+
+								<button id="btn-copy" title="Copy Source">
+									<i data-lucide="copy"></i>
+								</button>
+								<button id="btn-delete" class="btn-danger" title="Delete">
+									<i data-lucide="trash-2"></i>
+								</button>
+								<button id="btn-close" title="Close">
+									<i data-lucide="x"></i>
+								</button>
 							</div>
 						</div>
+
 						<div class="tag-bar" id="tag-container">
 							<input type="text" id="input-tag" placeholder="+ tag" />
 						</div>
@@ -57,7 +73,9 @@
 						<div class="editor-section" id="editor-section">
 							<textarea id="editor-body" placeholder="Start writing..."></textarea>
 						</div>
+
 						<div class="resizer resizer-split" id="resizer-split"></div>
+
 						<div class="preview-section" id="preview-section">
 							<div id="preview-body"></div>
 						</div>

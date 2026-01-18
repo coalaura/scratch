@@ -18,6 +18,12 @@ type Scratch struct {
 	CreatedAt int64    `json:"created_at"`
 }
 
+type ScratchUpdateRequest struct {
+	Title *string   `json:"title"`
+	Body  *string   `json:"body"`
+	Tags  *[]string `json:"tags"`
+}
+
 func (sc *Scratch) SetTags(tags string) {
 	sc.Tags = sc.Tags[:0]
 
@@ -77,9 +83,9 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var scratch Scratch
+	var req ScratchUpdateRequest
 
-	err := json.NewDecoder(r.Body).Decode(&scratch)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		abort(w, http.StatusBadRequest, "bad request")
 
@@ -88,7 +94,7 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = database.Update(id, &scratch)
+	err = database.Update(id, &req)
 	if err != nil {
 		abort(w, http.StatusInternalServerError, "failed to update")
 

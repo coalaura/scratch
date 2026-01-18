@@ -3,7 +3,6 @@
 package main
 
 import (
-	"net/http"
 	"net/http/httputil"
 	"net/url"
 
@@ -17,14 +16,6 @@ func frontend(r chi.Router) error {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
-
-	director := proxy.Director
-
-	proxy.Director = func(req *http.Request) {
-		director(req)
-
-		req.Host = target.Host
-	}
 
 	r.Handle("/*", proxy)
 
