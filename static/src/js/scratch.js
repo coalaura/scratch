@@ -314,11 +314,29 @@ function renderSidebar() {
 
 		// events
 		noteEl.addEventListener("click", () => {
+			if (state.activeNoteId === note.id) {
+
+				return;
+			}
+
 			selectNote(note.id);
 		});
 
 		$noteList.appendChild(noteEl);
 	}
+}
+
+async function closeNote() {
+	await saveIfDirty();
+
+	state.activeNoteId = null;
+
+	localStorage.removeItem("scratch_active_note");
+
+	$editorContainer.classList.add("hidden");
+	$emptyState.classList.remove("hidden");
+
+	renderSidebar();
 }
 
 async function selectNote(id) {
@@ -683,14 +701,7 @@ $deleteBtn.addEventListener("click", async () => {
 });
 
 $closeBtn.addEventListener("click", () => {
-	state.activeNoteId = null;
-
-	localStorage.removeItem("scratch_active_note");
-
-	$editorContainer.classList.add("hidden");
-	$emptyState.classList.remove("hidden");
-
-	renderSidebar();
+	closeNote();
 });
 
 $copyBtn.addEventListener("click", () => {
