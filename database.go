@@ -66,7 +66,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 }
 
 func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
-	rows, err := d.QueryContext(ctx, "SELECT id, title, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches ORDER BY updated_at DESC")
+	rows, err := d.QueryContext(ctx, "SELECT id, title, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
