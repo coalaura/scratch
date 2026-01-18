@@ -189,6 +189,64 @@ button:hover {
 	color: var(--red);
 }
 
+.toast-icon {
+	width: 16px;
+	height: 16px;
+	background-color: var(--blue);
+}
+
+.toast.error .toast-icon {
+	background-color: var(--red);
+}
+
+.icon {
+	display: inline-block;
+	width: 20px;
+	height: 20px;
+	background-color: currentColor;
+	-webkit-mask-size: contain;
+	mask-size: contain;
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+	mask-position: center;
+}
+
+.icon-plus {
+	-webkit-mask-image: url("./icons/plus.svg");
+	mask-image: url("./icons/plus.svg");
+}
+
+.icon-trash {
+	-webkit-mask-image: url("./icons/trash.svg");
+	mask-image: url("./icons/trash.svg");
+}
+
+.icon-copy {
+	-webkit-mask-image: url("./icons/copy.svg");
+	mask-image: url("./icons/copy.svg");
+}
+
+.icon-check {
+	-webkit-mask-image: url("./icons/check.svg");
+	mask-image: url("./icons/check.svg");
+}
+
+.icon-close {
+	-webkit-mask-image: url("./icons/close.svg");
+	mask-image: url("./icons/close.svg");
+}
+
+.icon-info {
+	-webkit-mask-image: url("./icons/info.svg");
+	mask-image: url("./icons/info.svg");
+}
+
+.icon-alert {
+	-webkit-mask-image: url("./icons/alert.svg");
+	mask-image: url("./icons/alert.svg");
+}
+
 .layout {
 	display: flex;
 	height: 100vh;
@@ -276,16 +334,21 @@ button:hover {
 .note-list {
 	flex: 1;
 	overflow-y: auto;
-	padding: 0.5rem;
+	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: 0;
 }
 
 .note-item {
-	padding: 0.6rem 0.75rem;
+	padding: 0.8rem 1rem;
 	cursor: pointer;
-	border: 1px solid transparent;
+	border-left: 3px solid transparent;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.note-item:nth-child(even) {
+	background: color-mix(in srgb, var(--surface0) 10%, transparent);
 }
 
 .note-item:hover {
@@ -294,11 +357,7 @@ button:hover {
 
 .note-item.active {
 	background: var(--surface0);
-	border-color: var(--surface1);
-}
-
-.note-item.active .note-title {
-	color: var(--mauve);
+	border-left-color: var(--mauve);
 }
 
 .note-title {
@@ -307,6 +366,10 @@ button:hover {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	font-size: 0.9rem;
+}
+
+.note-item.active .note-title {
+	color: var(--mauve);
 }
 
 .note-date {
@@ -331,16 +394,21 @@ button:hover {
 }
 
 .sidebar-footer {
-	padding: 0.75rem;
+	padding: 0;
 	border-top: 1px solid var(--surface0);
 }
 
 #btn-logout {
 	width: 100%;
 	justify-content: center;
+	border: none;
+	background: transparent;
+	border-radius: 0;
+	padding: 1rem;
 }
 
 #btn-logout:hover {
+	background: var(--surface0);
 	color: var(--red);
 }
 
@@ -509,14 +577,12 @@ textarea#editor-body {
 	flex: 1;
 	overflow-y: auto;
 	padding: 1.5rem 3rem;
-	/* Github-like padding */
 	background: var(--base);
 	color: var(--subtext1);
 	line-height: 1.6;
 	min-height: 0;
 }
 
-/* Github Markdown Styling */
 #preview-body h1,
 #preview-body h2,
 #preview-body h3,

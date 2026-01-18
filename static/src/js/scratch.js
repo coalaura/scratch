@@ -1,7 +1,6 @@
 import "../css/scratch.css";
 
 import DOMPurify from "dompurify";
-import { createIcons, icons } from "lucide";
 import { marked } from "marked";
 
 const state = {
@@ -62,24 +61,12 @@ function notify(message, type = "info") {
 	// icon
 	const iconEl = document.createElement("i");
 
-	if (type === "error") {
-		iconEl.setAttribute("data-lucide", "alert-circle");
-	} else {
-		iconEl.setAttribute("data-lucide", "info");
-	}
+	iconEl.className = `icon icon-${type === "error" ? "alert" : "info"}`;
 
 	notificationEl.prepend(iconEl);
 
 	// append
 	$notificationArea.appendChild(notificationEl);
-
-	createIcons({
-		icons: icons,
-		attrs: {
-			width: 16,
-			height: 16,
-		},
-	});
 
 	requestAnimationFrame(() => {
 		notificationEl.classList.add("visible");
@@ -525,10 +512,6 @@ $previewBody.addEventListener("scroll", () => {
 	syncScroll($previewBody, $editorBody);
 });
 
-createIcons({
-	icons: icons,
-});
-
 if (state.token) {
 	verifySession();
 } else {
@@ -624,18 +607,20 @@ $copyBtn.addEventListener("click", () => {
 	navigator.clipboard.writeText($editorBody.value).then(() => {
 		clearTimeout(state.copyTimeout);
 
-		$copyBtn.innerHTML = `<i data-lucide="check"></i>`;
+		const icon = $copyBtn.querySelector(".icon");
 
-		createIcons({
-			icons: icons,
-		});
+		if (icon) {
+			icon.classList.remove("icon-copy");
+			icon.classList.add("icon-check");
+		}
 
 		state.copyTimeout = setTimeout(() => {
-			$copyBtn.innerHTML = `<i data-lucide="copy"></i>`;
+			if (!icon) {
+				return;
+			}
 
-			createIcons({
-				icons: icons,
-			});
+			icon.classList.remove("icon-check");
+			icon.classList.add("icon-copy");
 		}, 1200);
 	});
 });
