@@ -315,6 +315,7 @@ function renderSidebar() {
 		// events
 		noteEl.addEventListener("click", () => {
 			if (state.activeNoteId === note.id) {
+				closeNote();
 
 				return;
 			}
@@ -506,8 +507,12 @@ function isDirty(note) {
 		return true;
 	}
 
-	if (note.tags.length !== last.tags.length) {
+	if (note.tags?.length !== last.tags?.length) {
 		return true;
+	}
+
+	if (!note.tags) {
+		return false;
 	}
 
 	const tagsAfter = note.tags.toSorted(),
