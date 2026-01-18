@@ -51,6 +51,7 @@ jobs:
           -trimpath \
           -buildvcs=false \
           -ldflags "-s -w -X 'main.Version=${{ github.ref_name }}'" \
+          -tags prod \
           -o "build/scratch${EXT}" .
 
         cp -r public build/public
