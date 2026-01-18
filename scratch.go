@@ -18,16 +18,14 @@ type Scratch struct {
 }
 
 func (sc *Scratch) SetTags(tags string) {
-	sc.Tags = nil
+	sc.Tags = sc.Tags[:0]
 
 	for tag := range strings.SplitSeq(tags, ",") {
 		tag = strings.TrimSpace(tag)
 
-		if tag == "" {
-			continue
+		if tag != "" {
+			sc.Tags = append(sc.Tags, tag)
 		}
-
-		sc.Tags = append(sc.Tags, tag)
 	}
 }
 

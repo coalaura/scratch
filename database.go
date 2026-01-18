@@ -28,14 +28,16 @@ func ConnectToDatabase() (*Database, error) {
 	db.SetMaxIdleConns(16)
 	db.SetConnMaxLifetime(time.Hour)
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS scratches (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT,
-		body TEXT,
-		tags TEXT,
-		updated_at INTEGER,
-		created_at INTEGER
-	)`)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS scratches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT,
+			body TEXT,
+			tags TEXT,
+			updated_at INTEGER,
+			created_at INTEGER
+		)
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 			tags string
 		)
 
-		err := rows.Scan(&sc.ID, &sc.Title, &sc.Body, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+		err = rows.Scan(&sc.ID, &sc.Title, &sc.Body, &tags, &sc.UpdatedAt, &sc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -103,30 +105,17 @@ func (d *Database) Create(sc *Scratch) error {
 	sc.UpdatedAt = now
 	sc.CreatedAt = now
 
-	err := d.QueryRow("INSERT INTO scratches (title, body, tags, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (d *Database) Delete(id string) error {
-	_, err := d.Exec("DELETE FROM scratches WHERE id = ?", id)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.QueryRow("INSERT INTO scratches (title, body, tags, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
 }
 
 func (d *Database) Update(id string, sc *Scratch) error {
 	sc.UpdatedAt = time.Now().Unix()
 
-	_, err := d.Exec("UPDATE scratches SET title = ?, body = ?, tags = ?, updated_at = ? WHERE id = ?", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.ID)
-	if err != nil {
-		return err
-	}
+	_, err := d.Exec("UPDATE scratches SET title = ?, body = ?, tags = ?, updated_at = ? WHERE id = ?", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, id)
+	return err
+}
 
-	return nil
+func (d *Database) Delete(id string) error {
+	_, err := d.Exec("DELETE FROM scratches WHERE id = ?", id)
+	return err
 }
