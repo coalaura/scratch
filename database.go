@@ -51,7 +51,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 		tags string
 	)
 
-	err := d.QueryRowContext(ctx, "SELECT id, title, body, tags, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.Title, &sc.Body, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+	err := d.QueryRowContext(ctx, "SELECT id, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.UpdatedAt, &sc.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -66,7 +66,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 }
 
 func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
-	rows, err := d.QueryContext(ctx, "SELECT id, title, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
+	rows, err := d.QueryContext(ctx, "SELECT id, title, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 			tags string
 		)
 
-		err = rows.Scan(&sc.ID, &sc.Title, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+		err = rows.Scan(&sc.ID, &sc.Title, &sc.Size, &tags, &sc.UpdatedAt, &sc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}

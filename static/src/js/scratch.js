@@ -54,26 +54,22 @@ const $authLayer = document.getElementById("auth-layer"),
 let ignoreScroll = false;
 
 function notify(message, type = "info") {
-	// notification
 	const notificationEl = document.createElement("div");
 
 	notificationEl.className = `toast ${type}`;
 
-	// message
 	const messageEl = document.createElement("span");
 
 	messageEl.textContent = message;
 
 	notificationEl.appendChild(messageEl);
 
-	// icon
 	const iconEl = document.createElement("i");
 
 	iconEl.className = `icon icon-${type === "error" ? "alert" : "info"}`;
 
 	notificationEl.prepend(iconEl);
 
-	// append
 	$notificationArea.appendChild(notificationEl);
 
 	requestAnimationFrame(() => {
@@ -126,6 +122,20 @@ async function api(method, path, body = null, opts = {}) {
 	const text = await response.text();
 
 	return text ? JSON.parse(text) : {};
+}
+
+function formatBytes(bytes) {
+	if (!+bytes) {
+		return "0B";
+	}
+
+	const sizes = ["B", "kB", "MB", "GB", "TB"],
+		i = Math.floor(Math.log(bytes) / Math.log(1000));
+
+	const val = bytes / Math.pow(1000, i),
+		dec = i === 0 ? 0 : val < 10 ? 2 : 1;
+
+	return `${val.toFixed(dec)}${sizes[i]}`;
 }
 
 function initResizer(handle, minWidth, getTargets, onStop) {
@@ -265,70 +275,195 @@ function renderSidebar() {
 	$noteList.innerHTML = "";
 
 	for (const note of state.notes) {
-		// note
-		const noteEl = document.createElement("div");
-
-		noteEl.className = `note-item${note.id === state.activeNoteId ? " active" : ""}`;
-
-		// title
-		const titleEl = document.createElement("div");
-
-		titleEl.className = "note-title";
-
-		titleEl.textContent = note.title || "Untitled";
-
-		noteEl.appendChild(titleEl);
-
-		// date
-		const dateEl = document.createElement("div");
-
-		dateEl.className = "note-date";
-
-		dateEl.textContent = new Date(note.updated_at * 1000).toLocaleString("en-GB", {
-			month: "short",
-			day: "2-digit",
-			hour: "2-digit",
-			minute: "2-digit",
-		});
-
-		noteEl.appendChild(dateEl);
-
-		// tags
-		const tagsEl = document.createElement("div");
-
-		tagsEl.className = "note-preview-tags";
-
-		if (note.tags?.length) {
-			for (const tag of note.tags) {
-				const tagEl = document.createElement("span");
-
-				tagEl.className = "mini-tag";
-
-				tagEl.textContent = tag;
-
-				tagsEl.appendChild(tagEl);
-			}
-		}
-
-		noteEl.appendChild(tagsEl);
-
-		// events
-		noteEl.addEventListener("click", () => {
-			if (state.activeNoteId === note.id) {
-				closeNote();
-
-				return;
-			}
-
-			selectNote(note.id);
-		});
-
-		$noteList.appendChild(noteEl);
+		$noteList.appendChild(createNoteItem(note));
 	}
 }
 
+function createNoteItem(note) {
+	const noteEl = document.createElement("div");
+
+	noteEl.dataset.noteId = String(note.id);
+
+	noteEl.className = `note-item${note.id === state.activeNoteId ? " active" : ""}`;
+
+	const titleEl = document.createElement("div");
+
+	titleEl.className = "note-title";
+
+	titleEl.textContent = note.title || "Untitled";
+
+	noteEl.appendChild(titleEl);
+
+	const sizeEl = document.createElement("div");
+
+	sizeEl.className = "note-size";
+
+	sizeEl.textContent = formatBytes(note.size || 0);
+
+	noteEl.appendChild(sizeEl);
+
+	const dateEl = document.createElement("div");
+
+	dateEl.className = "note-date";
+
+	dateEl.textContent = new Date(note.updated_at * 1000).toLocaleString("en-GB", {
+		month: "short",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+
+	noteEl.appendChild(dateEl);
+
+	const tagsEl = document.createElement("div");
+
+	tagsEl.className = "note-preview-tags";
+
+	if (note.tags?.length) {
+		for (const tag of note.tags) {
+			const tagEl = document.createElement("span");
+
+			tagEl.className = "mini-tag";
+
+			tagEl.textContent = tag;
+
+			tagsEl.appendChild(tagEl);
+		}
+	}
+
+	noteEl.appendChild(tagsEl);
+
+	return noteEl;
+}
+
+function updateNoteItem(noteId) {
+	const note = state.notes.find(_note => _note.id === noteId);
+
+	if (!note) {
+		return;
+	}
+
+	const existingEl = $noteList.querySelector(`.note-item[data-note-id="${noteId}"]`);
+
+	if (!existingEl) {
+		return;
+	}
+
+	const newEl = createNoteItem(note);
+
+	existingEl.replaceWith(newEl);
+}
+
+function updateActiveNoteClass(prevId, newId) {
+	if (prevId) {
+		const prevEl = $noteList.querySelector(`.note-item[data-note-id="${prevId}"]`);
+
+		if (prevEl) {
+			prevEl.classList.remove("active");
+		}
+	}
+
+	if (newId) {
+		const newEl = $noteList.querySelector(`.note-item[data-note-id="${newId}"]`);
+
+		if (newEl) {
+			newEl.classList.add("active");
+		}
+	}
+}
+
+function captureCurrentNote() {
+	if (!state.activeNoteId) {
+		return null;
+	}
+
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (!note) {
+		return null;
+	}
+
+	return {
+		id: state.activeNoteId,
+		title: $inputTitle.value,
+		body: $editorBody.value,
+		tags: note.tags ? [...note.tags] : [],
+	};
+}
+
+function isDirty(snapshot) {
+	const last = state.lastSaved;
+
+	if (snapshot.title !== last.title || snapshot.body !== last.body) {
+		return true;
+	}
+
+	if (snapshot.tags?.length !== last.tags?.length) {
+		return true;
+	}
+
+	if (!snapshot.tags) {
+		return false;
+	}
+
+	const tagsAfter = snapshot.tags.toSorted(),
+		tagsBefore = last.tags.toSorted();
+
+	return tagsAfter.some((tag, idx) => tag !== tagsBefore[idx]);
+}
+
+async function saveSnapshot(snapshot) {
+	if (!snapshot || !isDirty(snapshot)) {
+		return;
+	}
+
+	const note = state.notes.find(_note => _note.id === snapshot.id);
+
+	if (!note) {
+		return;
+	}
+
+	note.title = snapshot.title;
+	note.body = snapshot.body;
+	note.tags = snapshot.tags;
+
+	setStatus("SAVING...");
+
+	try {
+		await api("PUT", `/-/note/${snapshot.id}`, {
+			title: snapshot.title,
+			body: snapshot.body,
+			tags: snapshot.tags,
+		});
+
+		note.updated_at = Math.floor(Date.now() / 1000);
+
+		if (snapshot.id === state.activeNoteId) {
+			state.lastSaved = {
+				title: snapshot.title,
+				body: snapshot.body,
+				tags: snapshot.tags,
+			};
+		}
+
+		updateNoteItem(snapshot.id);
+
+		setStatus("SAVED");
+	} catch {
+		setStatus("ERROR", true);
+	}
+}
+
+async function saveCurrentNote() {
+	const snapshot = captureCurrentNote();
+
+	await saveSnapshot(snapshot);
+}
+
 async function closeNote() {
-	await saveIfDirty();
+	const snapshot = captureCurrentNote();
+
+	const prevId = state.activeNoteId;
 
 	state.activeNoteId = null;
 
@@ -337,10 +472,20 @@ async function closeNote() {
 	$editorContainer.classList.add("hidden");
 	$emptyState.classList.remove("hidden");
 
-	renderSidebar();
+	updateActiveNoteClass(prevId, null);
+
+	await saveSnapshot(snapshot);
 }
 
 async function selectNote(id) {
+	if (state.activeNoteId === id) {
+		return;
+	}
+
+	const snapshot = captureCurrentNote();
+
+	const prevId = state.activeNoteId;
+
 	state.activeNoteId = id;
 
 	localStorage.setItem("scratch_active_note", id);
@@ -367,7 +512,9 @@ async function selectNote(id) {
 
 	renderPreview("");
 
-	renderSidebar();
+	updateActiveNoteClass(prevId, id);
+
+	saveSnapshot(snapshot);
 
 	$splitView.classList.add("loading");
 
@@ -410,8 +557,6 @@ async function selectNote(id) {
 		tags: note.tags,
 	};
 
-	renderSidebar();
-
 	setStatus("READY");
 }
 
@@ -429,14 +574,12 @@ function renderTags(tags) {
 	});
 
 	for (const tag of tags) {
-		// tag
 		const chip = document.createElement("div");
 
 		chip.className = "tag-chip";
 
 		chip.textContent = tag;
 
-		// remove btn
 		const remove = document.createElement("span");
 
 		remove.textContent = "×";
@@ -447,7 +590,6 @@ function renderTags(tags) {
 
 		chip.appendChild(remove);
 
-		// append
 		$tagContainer.insertBefore(chip, $inputTag);
 	}
 }
@@ -476,7 +618,7 @@ async function addTag(raw) {
 
 		renderTags(note.tags);
 
-		await saveIfDirty(true);
+		await saveCurrentNote();
 	}
 }
 
@@ -491,77 +633,13 @@ async function removeTag(tag) {
 
 	renderTags(note.tags);
 
-	await saveIfDirty(true);
+	await saveCurrentNote();
 }
 
 function setStatus(msg, err = false) {
 	$status.textContent = msg;
 
 	$status.style.color = err ? "var(--red)" : "var(--overlay0)";
-}
-
-function isDirty(note) {
-	const last = state.lastSaved;
-
-	if (note.title !== last.title || note.body !== last.body) {
-		return true;
-	}
-
-	if (note.tags?.length !== last.tags?.length) {
-		return true;
-	}
-
-	if (!note.tags) {
-		return false;
-	}
-
-	const tagsAfter = note.tags.toSorted(),
-		tagsBefore = last.tags.toSorted();
-
-	return tagsAfter.some((tag, idx) => tag !== tagsBefore[idx]);
-}
-
-async function saveIfDirty(force = false) {
-	if (!state.activeNoteId) {
-		return;
-	}
-
-	const note = state.notes.find(_note => _note.id === state.activeNoteId);
-
-	if (!note) {
-		return;
-	}
-
-	note.title = $inputTitle.value;
-	note.body = $editorBody.value;
-
-	if (!force && !isDirty(note)) {
-		return;
-	}
-
-	setStatus("SAVING...");
-
-	try {
-		await api("PUT", `/-/note/${note.id}`, {
-			title: note.title,
-			body: note.body,
-			tags: note.tags,
-		});
-
-		note.updated_at = Math.floor(Date.now() / 1000);
-
-		state.lastSaved = {
-			title: note.title,
-			body: note.body,
-			tags: note.tags,
-		};
-
-		renderSidebar();
-
-		setStatus("SAVED");
-	} catch {
-		setStatus("ERROR", true);
-	}
 }
 
 function syncScroll(source, target) {
@@ -622,14 +700,6 @@ $editorBody.addEventListener("scroll", () => {
 $previewBody.addEventListener("scroll", () => {
 	syncScroll($previewBody, $editorBody);
 });
-
-if (state.token) {
-	verifySession();
-} else {
-	showAuth();
-}
-
-restoreLayout();
 
 $loginBtn.addEventListener("click", () => {
 	login();
@@ -744,16 +814,28 @@ $closePreviewBtn.addEventListener("click", () => {
 });
 
 $inputTitle.addEventListener("blur", () => {
-	saveIfDirty();
+	saveCurrentNote();
 });
 
 $editorBody.addEventListener("blur", () => {
-	saveIfDirty();
+	saveCurrentNote();
 });
 
 $editorBody.addEventListener("input", () => {
 	if (state.layout.previewVisible) {
 		renderPreview($editorBody.value);
+	}
+
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (note) {
+		note.size = new TextEncoder().encode($editorBody.value).length;
+
+		const sizeEl = $noteList.querySelector(".note-item.active .note-size");
+
+		if (sizeEl) {
+			sizeEl.textContent = formatBytes(note.size);
+		}
 	}
 });
 
@@ -770,6 +852,36 @@ $inputTag.addEventListener("keydown", event => {
 $inputTag.addEventListener("blur", () => {
 	addTag($inputTag.value);
 });
+
+$noteList.addEventListener("click", event => {
+	const item = event.target.closest(".note-item");
+
+	if (!item) {
+		return;
+	}
+
+	const id = parseInt(item.dataset.noteId, 10);
+
+	if (!id) {
+		return;
+	}
+
+	if (state.activeNoteId === id) {
+		closeNote();
+
+		return;
+	}
+
+	selectNote(id);
+});
+
+if (state.token) {
+	verifySession();
+} else {
+	showAuth();
+}
+
+restoreLayout();
 
 initResizer(
 	$resizerSidebar,

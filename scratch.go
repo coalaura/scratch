@@ -16,6 +16,8 @@ type Scratch struct {
 	Tags      []string `json:"tags"`
 	UpdatedAt int64    `json:"updated_at"`
 	CreatedAt int64    `json:"created_at"`
+
+	Size int64 `json:"size"`
 }
 
 type ScratchUpdateRequest struct {

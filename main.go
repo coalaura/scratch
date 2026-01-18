@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/coalaura/plain"
 	"github.com/go-chi/chi/middleware"
@@ -76,8 +74,5 @@ func main() {
 
 	log.Warnln("Shutting down...")
 
-	shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	server.Shutdown(shutdown)
+	server.Close()
 }

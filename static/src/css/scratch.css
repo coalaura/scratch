@@ -346,6 +346,7 @@ button:hover {
 }
 
 .note-item {
+	position: relative;
 	padding: 0.8rem 1rem;
 	cursor: pointer;
 	border-left: 3px solid transparent;
@@ -375,6 +376,14 @@ button:hover {
 
 .note-item.active .note-title {
 	color: var(--mauve);
+}
+
+.note-size {
+	position: absolute;
+	top: 2px;
+	right: 4px;
+	font-size: 0.7rem;
+	color: var(--overlay0);
 }
 
 .note-date {
