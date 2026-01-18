@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -69,9 +70,8 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-
-	if id == "" {
+	id, ok := parseID(r, "id")
+	if !ok {
 		abort(w, http.StatusBadRequest, "invalid id")
 
 		return
@@ -101,9 +101,8 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-
-	if id == "" {
+	id, ok := parseID(r, "id")
+	if !ok {
 		abort(w, http.StatusBadRequest, "invalid id")
 
 		return
@@ -119,4 +118,18 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, nil)
+}
+
+func parseID(r *http.Request, name string) (int64, bool) {
+	raw := chi.URLParam(r, name)
+	if raw == "" {
+		return 0, false
+	}
+
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+
+	return id, true
 }

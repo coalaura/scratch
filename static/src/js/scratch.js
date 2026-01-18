@@ -1,252 +1,578 @@
 import "../css/scratch.css";
+
+import DOMPurify from "dompurify";
 import { createIcons, icons } from "lucide";
-import { API, Auth } from "./api.js";
-import { Editor } from "./editor.js";
+import { marked } from "marked";
 
-// --- State ---
-const State = {
+const state = {
+	token: localStorage.getItem("scratch_token"),
 	notes: [],
+	busy: false,
 	activeNoteId: null,
+	copyTimeout: null,
+	lastSaved: {
+		title: "",
+		body: "",
+		tags: [],
+	},
 };
 
-// --- DOM Elements ---
-const dom = {
-	authLayer: document.getElementById("auth-layer"),
-	authToken: document.getElementById("auth-token"),
-	authBtn: document.getElementById("auth-btn"),
-	authError: document.getElementById("auth-error"),
-	sidebarList: document.getElementById("note-list"),
-	newNoteBtn: document.getElementById("new-note-btn"),
-	logoutBtn: document.getElementById("logout-btn"),
-	editorPane: document.getElementById("editor-pane"),
-	emptyState: document.getElementById("empty-state"),
-	editorContainer: document.getElementById("editor-container"),
-	noteTitle: document.getElementById("note-title"),
-	saveStatus: document.getElementById("save-status"),
-	copyBtn: document.getElementById("copy-btn"),
-	deleteBtn: document.getElementById("delete-btn"),
-	noteIdDisplay: document.getElementById("note-id-display"),
-};
+const $authLayer = document.getElementById("auth-layer"),
+	$inputAuth = document.getElementById("input-auth"),
+	$loginBtn = document.getElementById("btn-login"),
+	$logoutBtn = document.getElementById("btn-logout"),
+	$authError = document.getElementById("auth-error"),
+	$versionLabel = document.getElementById("label-version"),
+	$noteList = document.getElementById("note-list"),
+	$emptyState = document.getElementById("empty-state"),
+	$editorContainer = document.getElementById("editor-container"),
+	$inputTitle = document.getElementById("input-title"),
+	$inputTag = document.getElementById("input-tag"),
+	$tagContainer = document.getElementById("tag-container"),
+	$editorBody = document.getElementById("editor-body"),
+	$previewBody = document.getElementById("preview-body"),
+	$status = document.getElementById("status-indicator"),
+	$resizerSidebar = document.getElementById("resizer-sidebar"),
+	$resizerSplit = document.getElementById("resizer-split"),
+	$newBtn = document.getElementById("btn-new"),
+	$deleteBtn = document.getElementById("btn-delete"),
+	$closeBtn = document.getElementById("btn-close"),
+	$copyBtn = document.getElementById("btn-copy"),
+	$sidebar = document.getElementById("sidebar"),
+	$editorSection = document.getElementById("editor-section"),
+	$previewSection = document.getElementById("preview-section"),
+	$splitView = document.querySelector(".split-view");
 
-// --- Icons ---
-createIcons({ icons: icons });
+async function api(method, path, body = null) {
+	const headers = {
+		Authorization: `Bearer ${state.token}`,
+	};
 
-// --- Logic ---
+	if (body) {
+		headers["Content-Type"] = "application/json";
+	}
 
-const formatDate = ts => {
-	return new Intl.DateTimeFormat("en-GB", {
-		month: "short",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(new Date(ts * 1000));
-};
-
-const renderSidebar = () => {
-	dom.sidebarList.innerHTML = "";
-	// Sort by updated_at desc
-	const sorted = [...State.notes].sort((a, b) => b.updated_at - a.updated_at);
-
-	sorted.forEach(note => {
-		const el = document.createElement("div");
-		el.className = `note-item ${note.id === State.activeNoteId ? "active" : ""}`;
-		el.innerHTML = `
-            <div class="note-item-title">${note.title || "Untitled"}</div>
-            <div class="note-item-date">${formatDate(note.updated_at)}</div>
-        `;
-		el.onclick = () => loadNote(note.id);
-		dom.sidebarList.appendChild(el);
+	const response = await fetch(path, {
+		method: method,
+		headers: headers,
+		body: body ? JSON.stringify(body) : null,
 	});
-};
 
-const setStatus = (msg, isError = false) => {
-	dom.saveStatus.textContent = msg;
-	dom.saveStatus.style.color = isError ? "var(--danger)" : "var(--text-muted)";
-};
+	if (response.status === 403) {
+		throw new Error("Auth");
+	}
 
-const loadNote = id => {
-	// If there is an active note, ensure we save latest changes from title/editor before switching?
-	// The blur event handles autosave, but direct switching might miss it if field is focused.
-	// Ideally we manually trigger a save if dirty, but simpler: rely on blur for now.
+	if (!response.ok) {
+		let msg = response.statusText;
 
-	State.activeNoteId = id;
-	const note = State.notes.find(n => n.id === id);
+		try {
+			const data = await response.json();
+
+			if (data.error) {
+				msg = data.error;
+			}
+		} catch {}
+
+		throw new Error(msg);
+	}
+
+	const text = await response.text();
+
+	return text ? JSON.parse(text) : {};
+}
+
+function initResizer(handle, minWidth, getTargets) {
+	let startX, startWidths;
+
+	if (!handle) {
+		return;
+	}
+
+	function onMove(event) {
+		const { primary, secondary, container } = getTargets(),
+			containerWidth = container.getBoundingClientRect().width,
+			delta = event.clientX - startX;
+
+		let newPrimaryWidth = startWidths.primary + delta;
+
+		if (newPrimaryWidth < minWidth) {
+			newPrimaryWidth = minWidth;
+		}
+
+		const maxPrimaryWidth = containerWidth - minWidth - handle.offsetWidth;
+
+		if (newPrimaryWidth > maxPrimaryWidth) {
+			newPrimaryWidth = maxPrimaryWidth;
+		}
+
+		primary.style.flex = `0 0 ${newPrimaryWidth}px`;
+		secondary.style.flex = "1 1 0%";
+	}
+
+	function onUp() {
+		handle.classList.remove("active");
+
+		document.body.style.cursor = "";
+
+		document.removeEventListener("mousemove", onMove);
+		document.removeEventListener("mouseup", onUp);
+	}
+
+	handle.addEventListener("mousedown", event => {
+		event.preventDefault();
+
+		const { primary } = getTargets();
+
+		startX = event.clientX;
+
+		startWidths = {
+			primary: primary.getBoundingClientRect().width,
+		};
+
+		handle.classList.add("active");
+
+		document.body.style.cursor = "col-resize";
+
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+	});
+}
+
+function showAuth() {
+	$authLayer.classList.remove("hidden");
+
+	$inputAuth.value = "";
+
+	$inputAuth.focus();
+}
+
+async function verifySession() {
+	try {
+		const response = await api("GET", "/-/verify");
+
+		$versionLabel.textContent = response.version || "";
+
+		$authLayer.classList.add("hidden");
+
+		loadNotes();
+	} catch (err) {
+		if (err.message === "Auth") {
+			state.token = null;
+
+			localStorage.removeItem("scratch_token");
+		}
+
+		showAuth();
+
+		if (err.message !== "Auth") {
+			$authError.textContent = "Connection failed";
+		}
+	}
+}
+
+async function login() {
+	const token = $inputAuth.value.trim();
+
+	if (!token) {
+		return;
+	}
+
+	state.token = token;
+
+	localStorage.setItem("scratch_token", token);
+
+	$authError.textContent = "";
+
+	await verifySession();
+}
+
+async function loadNotes() {
+	try {
+		state.notes = (await api("GET", "/-/list")) || [];
+
+		renderSidebar();
+	} catch (err) {
+		console.error(`Failed to load notes: ${err}`);
+	}
+}
+
+function renderSidebar() {
+	$noteList.innerHTML = "";
+
+	for (const note of state.notes) {
+		// note
+		const noteEl = document.createElement("div");
+
+		noteEl.className = `note-item${note.id === state.activeNoteId ? " active" : ""}`;
+
+		// title
+		const titleEl = document.createElement("div");
+
+		titleEl.className = "note-title";
+
+		titleEl.textContent = note.title || "Untitled";
+
+		noteEl.appendChild(titleEl);
+
+		// date
+		const dateEl = document.createElement("div");
+
+		dateEl.className = "note-date";
+
+		dateEl.textContent = new Date(note.updated_at * 1000).toLocaleString("en-GB", {
+			month: "short",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+
+		noteEl.appendChild(dateEl);
+
+		// tags
+		const tagsEl = document.createElement("div");
+
+		tagsEl.className = "note-preview-tags";
+
+		if (note.tags?.length) {
+			for (const tag of note.tags) {
+				const tagEl = document.createElement("span");
+
+				tagEl.className = "mini-tag";
+
+				tagEl.textContent = tag;
+
+				tagsEl.appendChild(tagEl);
+			}
+		}
+
+		// events
+		noteEl.addEventListener("click", () => {
+			selectNote(note.id);
+		});
+
+		$noteList.appendChild(noteEl);
+	}
+}
+
+function selectNote(id) {
+	state.activeNoteId = id;
+
+	const note = state.notes.find(_note => _note.id === id);
+
 	if (!note) {
 		return;
 	}
 
-	dom.emptyState.classList.add("hidden");
-	dom.editorContainer.classList.remove("hidden");
+	$emptyState.classList.add("hidden");
+	$editorContainer.classList.remove("hidden");
 
-	dom.noteTitle.value = note.title;
-	dom.noteIdDisplay.textContent = `ID: ${note.id}`;
+	$inputTitle.value = note.title;
+	$editorBody.value = note.body;
 
-	Editor.setDoc(note.body);
-	renderSidebar(); // Update active class
+	renderTags(note.tags || []);
+
+	renderPreview(note.body);
+
+	state.lastSaved = {
+		title: note.title,
+		body: note.body,
+		tags: note.tags,
+	};
+
+	renderSidebar();
+
 	setStatus("READY");
-};
+}
 
-const saveCurrentNote = async changes => {
-	if (!State.activeNoteId) {
+function renderPreview(md) {
+	$previewBody.innerHTML = DOMPurify.sanitize(marked.parse(md));
+}
+
+function sanitizeTag(raw) {
+	return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function renderTags(tags) {
+	$tagContainer.querySelectorAll(".tag-chip").forEach(container => {
+		container.remove();
+	});
+
+	for (const tag of tags) {
+		// tag
+		const chip = document.createElement("div");
+
+		chip.className = "tag-chip";
+
+		chip.textContent = tag;
+
+		// remove btn
+		const remove = document.createElement("span");
+
+		remove.textContent = "×";
+
+		remove.addEventListener("click", () => {
+			removeTag(tag);
+		});
+
+		chip.appendChild(remove);
+
+		// append
+		$tagContainer.insertBefore(chip, $inputTag);
+	}
+}
+
+async function addTag(raw) {
+	const tag = sanitizeTag(raw);
+
+	$inputTag.value = "";
+
+	if (!tag) {
+		return;
+	}
+
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (!note) {
+		return;
+	}
+
+	if (!note.tags) {
+		note.tags = [];
+	}
+
+	if (!note.tags.includes(tag)) {
+		note.tags.push(tag);
+
+		renderTags(note.tags);
+
+		await saveIfDirty();
+	}
+}
+
+async function removeTag(tag) {
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (!note || !note.tags) {
+		return;
+	}
+
+	note.tags = note.tags.filter(_tag => _tag !== tag);
+
+	renderTags(note.tags);
+
+	await saveIfDirty();
+}
+
+function setStatus(msg, err = false) {
+	$status.textContent = msg;
+
+	$status.style.color = err ? "var(--red)" : "var(--overlay0)";
+}
+
+function isDirty(note) {
+	const last = state.lastSaved;
+
+	if (note.title !== last.title || note.body !== last.body) {
+		return true;
+	}
+
+	if (note.tags.length !== last.tags.length) {
+		return true;
+	}
+
+	const tagsAfter = note.tags.sort(),
+		tagsBefore = last.tags.sort();
+
+	return tagsAfter.some((tag, idx) => tag !== tagsBefore[idx]);
+}
+
+async function saveIfDirty() {
+	if (!state.activeNoteId) {
+		return;
+	}
+
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (!note) {
+		return;
+	}
+
+	note.title = $inputTitle.value;
+	note.body = $editorBody.value;
+
+	if (!isDirty(note)) {
 		return;
 	}
 
 	setStatus("SAVING...");
-	try {
-		await API.update(State.activeNoteId, changes);
 
-		// Update local state
-		const note = State.notes.find(n => n.id === State.activeNoteId);
-		if (note) {
-			Object.assign(note, changes);
-			note.updated_at = Math.floor(Date.now() / 1000);
-		}
+	try {
+		await api("PUT", `/-/note/${note.id}`, {
+			title: note.title,
+			body: note.body,
+			tags: note.tags,
+		});
+
+		note.updated_at = Math.floor(Date.now() / 1000);
+
+		state.lastSaved = {
+			title: note.title,
+			body: note.body,
+			tags: note.tags,
+		};
 
 		renderSidebar();
+
 		setStatus("SAVED");
-		setTimeout(() => setStatus("READY"), 2000);
-	} catch (e) {
-		console.error(e);
+	} catch {
 		setStatus("ERROR", true);
 	}
-};
+}
 
-const init = async () => {
-	Editor.init(document.getElementById("cm-target"), newBody => {
-		// Debounce or just save on blur.
-		// Logic requested: "on blur of the field it should save"
-		// Editor.js calls this callback on blur.
-		saveCurrentNote({ body: newBody });
-	});
-
-	// Check Auth
-	const token = Auth.get();
-	if (token) {
-		tryVerify();
-	} else {
-		dom.authLayer.classList.remove("hidden");
-	}
-};
-
-const tryVerify = async () => {
-	try {
-		await API.verify();
-		dom.authLayer.classList.add("hidden");
-		await refreshList();
-	} catch {
-		Auth.clear();
-		dom.authLayer.classList.remove("hidden");
-		dom.authError.textContent = "Invalid Session";
-	}
-};
-
-const refreshList = async () => {
-	try {
-		State.notes = await API.list();
-		renderSidebar();
-	} catch (e) {
-		console.error("Failed to load notes", e);
-	}
-};
-
-// --- Event Listeners ---
-
-// Auth
-dom.authBtn.onclick = async () => {
-	const val = dom.authToken.value.trim();
-	if (!val) {
-		return;
-	}
-	Auth.set(val);
-	dom.authError.textContent = "";
-	await tryVerify();
-};
-
-window.addEventListener("auth:expired", () => {
-	dom.authLayer.classList.remove("hidden");
-	dom.authError.textContent = "Session Expired";
+createIcons({
+	icons: icons,
 });
 
-dom.logoutBtn.onclick = () => {
-	Auth.clear();
-	location.reload();
-};
+if (state.token) {
+	verifySession();
+} else {
+	showAuth();
+}
 
-dom.newNoteBtn.onclick = async () => {
+$loginBtn.addEventListener("click", () => {
+	login();
+});
+
+$inputAuth.addEventListener("keydown", event => {
+	if (event.key !== "Enter") {
+		return;
+	}
+
+	login();
+});
+
+$logoutBtn.addEventListener("click", () => {
+	localStorage.removeItem("scratch_token");
+
+	location.reload();
+});
+
+$newBtn.addEventListener("click", async () => {
+	if (state.busy) {
+		return;
+	}
+
+	state.busy = true;
+
 	try {
-		const resp = await API.create({
+		const response = await api("POST", "/-/note", {
 			title: "",
 			body: "",
 			tags: [],
 		});
-		await refreshList();
-		loadNote(resp.id);
-	} catch (e) {
-		alert(`Failed to create note: ${e.message}`);
-	}
-};
 
-dom.deleteBtn.onclick = async () => {
-	if (!confirm("Delete this note permanently?")) {
-		return;
-	}
-	// API endpoint for delete wasn't specified in prompt, assuming /-/note/{id} with DELETE?
-	// Prompt only said "POST create", "PUT update", "GET list".
-	// Checking prompt again...
-	// "Each note should have buttons to ... delete the note."
-	// Ah, strictly speaking the prompt backend spec didn't list a DELETE route.
-	// I will implement assuming standard REST `DELETE /-/note/{id}`.
-	// If backend doesn't exist, this will 404.
+		await loadNotes();
 
-	// Actually, looking at the prompt:
-	// "I will provide the backend api: GET /-/list ... POST /-/note ... PUT /-/note/{id} ... GET /-/verify"
-	// NO DELETE ROUTE PROVIDED.
-	// I should probably mention this or hack a workaround (add tag "deleted"?).
-	// For now, I'll send a DELETE request assuming standard conventions
-	// or the user forgot to list it.
+		selectNote(response.id);
 
-	// To be safe regarding the prompt constraints, I will add code
-	// assuming DELETE /-/note/{id} exists.
-
-	try {
-		// Custom request since it wasn't in my api.js helpers
-		const token = Auth.get();
-		await fetch(`/-/note/${State.activeNoteId}`, {
-			method: "DELETE",
-			headers: { Authorization: `Bearer ${token}` },
-		});
-
-		State.activeNoteId = null;
-		dom.editorContainer.classList.add("hidden");
-		dom.emptyState.classList.remove("hidden");
-		await refreshList();
-	} catch {
-		alert("Could not delete (API might not support it yet)");
-	}
-};
-
-dom.copyBtn.onclick = () => {
-	const content = Editor.getDoc();
-	navigator.clipboard.writeText(content).then(() => {
-		const original = dom.copyBtn.innerHTML;
-		dom.copyBtn.innerHTML = '<i data-lucide="check"></i>';
-		createIcons({ icons: icons, nameAttr: "data-lucide", attrs: {} });
-		setTimeout(() => {
-			dom.copyBtn.innerHTML = original;
-			createIcons({ icons: icons, nameAttr: "data-lucide", attrs: {} });
-		}, 1500);
-	});
-};
-
-// Autosave Title
-dom.noteTitle.addEventListener("blur", () => {
-	const val = dom.noteTitle.value;
-	// only save if changed
-	const note = State.notes.find(n => n.id === State.activeNoteId);
-	if (note && note.title !== val) {
-		saveCurrentNote({ title: val });
+		$inputTitle.focus();
+	} catch (err) {
+		alert(err.message);
+	} finally {
+		state.busy = false;
 	}
 });
 
-// Boot
-init();
+$deleteBtn.addEventListener("click", async () => {
+	if (state.busy) {
+		return;
+	}
+
+	if (!state.activeNoteId || !confirm("Delete this note?")) {
+		return;
+	}
+
+	state.busy = true;
+
+	try {
+		await api("DELETE", `/-/note/${state.activeNoteId}`);
+
+		state.activeNoteId = null;
+
+		$editorContainer.classList.add("hidden");
+		$emptyState.classList.remove("hidden");
+
+		await loadNotes();
+	} catch (err) {
+		alert(err.message);
+	} finally {
+		state.busy = false;
+	}
+});
+
+$closeBtn.addEventListener("click", () => {
+	state.activeNoteId = null;
+
+	$editorContainer.classList.add("hidden");
+	$emptyState.classList.remove("hidden");
+
+	renderSidebar();
+});
+
+$copyBtn.addEventListener("click", () => {
+	navigator.clipboard.writeText($editorBody.value).then(() => {
+		clearTimeout(state.copyTimeout);
+
+		$copyBtn.innerHTML = `<i data-lucide="check"></i>`;
+
+		createIcons({
+			icons: icons,
+		});
+
+		state.copyTimeout = setTimeout(() => {
+			$copyBtn.innerHTML = `<i data-lucide="copy"></i>`;
+
+			createIcons({
+				icons: icons,
+			});
+		}, 1200);
+	});
+});
+
+$inputTitle.addEventListener("blur", () => {
+	saveIfDirty();
+});
+
+$editorBody.addEventListener("blur", () => {
+	saveIfDirty();
+});
+
+$editorBody.addEventListener("input", () => {
+	renderPreview($editorBody.value);
+});
+
+$inputTag.addEventListener("keydown", event => {
+	if (event.key !== "Enter" && event.key !== " " && event.key !== ",") {
+		return;
+	}
+
+	event.preventDefault();
+
+	addTag($inputTag.value);
+});
+
+$inputTag.addEventListener("blur", () => {
+	addTag($inputTag.value);
+});
+
+initResizer($resizerSidebar, 200, () => ({
+	primary: $sidebar,
+	secondary: document.querySelector(".editor-pane"),
+	container: document.querySelector(".layout"),
+}));
+
+initResizer($resizerSplit, 300, () => ({
+	primary: $editorSection,
+	secondary: $previewSection,
+	container: $splitView,
+}));

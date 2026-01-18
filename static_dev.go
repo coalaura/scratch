@@ -11,7 +11,10 @@ import (
 )
 
 func frontend(r chi.Router) error {
-	target, _ := url.Parse("http://localhost:3000")
+	target, err := url.Parse("http://127.0.0.1:3000")
+	if err != nil {
+		return err
+	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 

@@ -108,14 +108,14 @@ func (d *Database) Create(sc *Scratch) error {
 	return d.QueryRow("INSERT INTO scratches (title, body, tags, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
 }
 
-func (d *Database) Update(id string, sc *Scratch) error {
+func (d *Database) Update(id int64, sc *Scratch) error {
 	sc.UpdatedAt = time.Now().Unix()
 
 	_, err := d.Exec("UPDATE scratches SET title = ?, body = ?, tags = ?, updated_at = ? WHERE id = ?", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, id)
 	return err
 }
 
-func (d *Database) Delete(id string) error {
+func (d *Database) Delete(id int64) error {
 	_, err := d.Exec("DELETE FROM scratches WHERE id = ?", id)
 	return err
 }
