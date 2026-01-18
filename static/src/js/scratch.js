@@ -41,9 +41,58 @@ const $authLayer = document.getElementById("auth-layer"),
 	$sidebar = document.getElementById("sidebar"),
 	$editorSection = document.getElementById("editor-section"),
 	$previewSection = document.getElementById("preview-section"),
-	$splitView = document.querySelector(".split-view");
+	$splitView = document.querySelector(".split-view"),
+	$notificationArea = document.getElementById("notification-area");
 
 let ignoreScroll = false;
+
+function notify(message, type = "info") {
+	// notification
+	const notificationEl = document.createElement("div");
+
+	notificationEl.className = `toast ${type}`;
+
+	// message
+	const messageEl = document.createElement("span");
+
+	messageEl.textContent = message;
+
+	notificationEl.appendChild(messageEl);
+
+	// icon
+	const iconEl = document.createElement("i");
+
+	if (type === "error") {
+		iconEl.setAttribute("data-lucide", "alert-circle");
+	} else {
+		iconEl.setAttribute("data-lucide", "info");
+	}
+
+	notificationEl.prepend(iconEl);
+
+	// append
+	$notificationArea.appendChild(notificationEl);
+
+	createIcons({
+		icons: icons,
+		attrs: {
+			width: 16,
+			height: 16,
+		},
+	});
+
+	requestAnimationFrame(() => {
+		notificationEl.classList.add("visible");
+	});
+
+	setTimeout(() => {
+		notificationEl.classList.remove("visible");
+
+		notificationEl.addEventListener("transitionend", () => {
+			notificationEl.remove();
+		});
+	}, 3000);
+}
 
 async function api(method, path, body = null) {
 	const headers = {
@@ -206,7 +255,9 @@ async function loadNotes() {
 			}
 		}
 	} catch (err) {
-		console.error(`Failed to load notes: ${err}`);
+		console.error(err);
+
+		notify("Failed to load notes", "error");
 	}
 }
 
@@ -258,6 +309,8 @@ function renderSidebar() {
 				tagsEl.appendChild(tagEl);
 			}
 		}
+
+		noteEl.appendChild(tagsEl);
 
 		// events
 		noteEl.addEventListener("click", () => {
@@ -361,7 +414,7 @@ async function addTag(raw) {
 
 		renderTags(note.tags);
 
-		await saveIfDirty();
+		await saveIfDirty(true);
 	}
 }
 
@@ -376,7 +429,7 @@ async function removeTag(tag) {
 
 	renderTags(note.tags);
 
-	await saveIfDirty();
+	await saveIfDirty(true);
 }
 
 function setStatus(msg, err = false) {
@@ -402,7 +455,7 @@ function isDirty(note) {
 	return tagsAfter.some((tag, idx) => tag !== tagsBefore[idx]);
 }
 
-async function saveIfDirty() {
+async function saveIfDirty(force = false) {
 	if (!state.activeNoteId) {
 		return;
 	}
@@ -416,7 +469,7 @@ async function saveIfDirty() {
 	note.title = $inputTitle.value;
 	note.body = $editorBody.value;
 
-	if (!isDirty(note)) {
+	if (!force && !isDirty(note)) {
 		return;
 	}
 
@@ -521,7 +574,7 @@ $newBtn.addEventListener("click", async () => {
 
 		$inputTitle.focus();
 	} catch (err) {
-		alert(err.message);
+		notify(err.message, "error");
 	} finally {
 		state.busy = false;
 	}
@@ -550,7 +603,7 @@ $deleteBtn.addEventListener("click", async () => {
 
 		await loadNotes();
 	} catch (err) {
-		alert(err.message);
+		notify(err.message, "error");
 	} finally {
 		state.busy = false;
 	}
