@@ -23,7 +23,7 @@ ReadOnlyPaths=/path/to/scratch
 ProtectHome=yes
 PrivateTmp=yes
 PrivateMounts=yes
-UMask=0077
+UMask=0022
 
 # Kernel & Hardware Protection
 PrivateDevices=yes
