@@ -23,6 +23,7 @@ const state = {
 };
 
 const $authLayer = document.getElementById("auth-layer"),
+	$appLoader = document.getElementById("app-loader"),
 	$inputAuth = document.getElementById("input-auth"),
 	$loginBtn = document.getElementById("btn-login"),
 	$logoutBtn = document.getElementById("btn-logout"),
@@ -94,34 +95,66 @@ async function api(method, path, body = null, opts = {}) {
 		headers["Content-Type"] = "application/json";
 	}
 
-	const response = await fetch(path, {
-		method: method,
-		headers: headers,
-		body: body ? JSON.stringify(body) : null,
-		...opts,
-	});
+	let timeoutId,
+		signal = opts.signal;
 
-	if (response.status === 403) {
-		throw new Error("Auth");
+	if (!signal) {
+		const controller = new AbortController();
+
+		signal = controller.signal;
+
+		timeoutId = setTimeout(() => controller.abort(), 15000);
 	}
 
-	if (!response.ok) {
-		let msg = response.statusText;
+	try {
+		const response = await fetch(path, {
+			method: method,
+			headers: headers,
+			body: body ? JSON.stringify(body) : null,
+			...opts,
+			signal: signal,
+		});
 
-		try {
-			const data = await response.json();
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
 
-			if (data.error) {
-				msg = data.error;
-			}
-		} catch {}
+		if (response.status === 403) {
+			throw new Error("Auth");
+		}
 
-		throw new Error(msg);
+		if (!response.ok) {
+			let msg = response.statusText;
+
+			try {
+				const data = await response.json();
+
+				if (data.error) {
+					msg = data.error;
+				}
+			} catch {}
+
+			throw new Error(msg);
+		}
+
+		const text = await response.text();
+
+		return text ? JSON.parse(text) : {};
+	} catch (err) {
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+
+		if (err.name === "AbortError") {
+			throw new Error("Request timed out");
+		}
+
+		throw err;
 	}
+}
 
-	const text = await response.text();
-
-	return text ? JSON.parse(text) : {};
+function setLoading(element, loading) {
+	element.classList.toggle("is-loading", loading);
 }
 
 function formatBytes(bytes) {
@@ -208,15 +241,20 @@ function showAuth() {
 }
 
 async function verifySession() {
+	$appLoader.classList.remove("hidden");
+
 	try {
 		const response = await api("GET", "/-/verify");
 
 		$versionLabel.textContent = response.version || "";
 
 		$authLayer.classList.add("hidden");
+		$appLoader.classList.add("hidden");
 
 		loadNotes();
 	} catch (err) {
+		$appLoader.classList.add("hidden");
+
 		if (err.message === "Auth") {
 			state.token = null;
 
@@ -226,7 +264,7 @@ async function verifySession() {
 		showAuth();
 
 		if (err.message !== "Auth") {
-			$authError.textContent = "Connection failed";
+			$authError.textContent = err.message === "Request timed out" ? "Connection timed out" : "Connection failed";
 		}
 	}
 }
@@ -248,6 +286,8 @@ async function login() {
 }
 
 async function loadNotes() {
+	setLoading($sidebar, true);
+
 	try {
 		state.notes = (await api("GET", "/-/notes")) || [];
 
@@ -268,6 +308,8 @@ async function loadNotes() {
 		console.error(err);
 
 		notify("Failed to load notes", "error");
+	} finally {
+		setLoading($sidebar, false);
 	}
 }
 
@@ -477,14 +519,13 @@ async function closeNote() {
 	await saveSnapshot(snapshot);
 }
 
-async function selectNote(id) {
+async function selectNote(id, skipLoading = false) {
 	if (state.activeNoteId === id) {
 		return;
 	}
 
-	const snapshot = captureCurrentNote();
-
-	const prevId = state.activeNoteId;
+	const snapshot = captureCurrentNote(),
+		prevId = state.activeNoteId;
 
 	state.activeNoteId = id;
 
@@ -516,33 +557,35 @@ async function selectNote(id) {
 
 	saveSnapshot(snapshot);
 
-	$splitView.classList.add("loading");
+	if (!skipLoading) {
+		$splitView.classList.add("loading");
 
-	try {
-		const fullNote = await api("GET", `/-/note/${id}`, null, {
-			signal: controller.signal,
-		});
+		try {
+			const fullNote = await api("GET", `/-/note/${id}`, null, {
+				signal: controller.signal,
+			});
 
-		if (state.activeNoteId !== id) {
-			return;
-		}
+			if (state.activeNoteId !== id) {
+				return;
+			}
 
-		Object.assign(note, fullNote);
-	} catch (err) {
-		if (controller.signal.aborted) {
+			Object.assign(note, fullNote);
+		} catch (err) {
+			if (controller.signal.aborted) {
+				return;
+			}
+
+			$splitView.classList.remove("loading");
+
+			console.error(err);
+
+			notify("Failed to load note", "error");
+
 			return;
 		}
 
 		$splitView.classList.remove("loading");
-
-		console.error(err);
-
-		notify("Failed to load note", "error");
-
-		return;
 	}
-
-	$splitView.classList.remove("loading");
 
 	$inputTitle.value = note.title;
 	$editorBody.value = note.body;
@@ -554,7 +597,7 @@ async function selectNote(id) {
 	state.lastSaved = {
 		title: note.title,
 		body: note.body,
-		tags: note.tags,
+		tags: note.tags || [],
 	};
 
 	setStatus("READY");
@@ -721,11 +764,13 @@ $logoutBtn.addEventListener("click", () => {
 });
 
 $newBtn.addEventListener("click", async () => {
-	if (state.busy) {
+	if (state.busy || $sidebar.classList.contains("is-loading")) {
 		return;
 	}
 
 	state.busy = true;
+
+	setLoading($sidebar, true);
 
 	try {
 		const response = await api("POST", "/-/note", {
@@ -734,15 +779,26 @@ $newBtn.addEventListener("click", async () => {
 			tags: [],
 		});
 
-		await loadNotes();
+		state.notes.unshift({
+			id: response.id,
+			title: "",
+			body: "",
+			tags: [],
+			size: 0,
+			updated_at: Math.floor(Date.now() / 1000),
+		});
 
-		selectNote(response.id);
+		renderSidebar();
+
+		selectNote(response.id, true);
 
 		$inputTitle.focus();
 	} catch (err) {
 		notify(err.message, "error");
 	} finally {
 		state.busy = false;
+
+		setLoading($sidebar, false);
 	}
 });
 
@@ -757,21 +813,29 @@ $deleteBtn.addEventListener("click", async () => {
 
 	state.busy = true;
 
+	setLoading($editorContainer, true);
+
 	try {
 		await api("DELETE", `/-/note/${state.activeNoteId}`);
+
+		const deletedId = state.activeNoteId;
 
 		state.activeNoteId = null;
 
 		localStorage.removeItem("scratch_active_note");
 
+		state.notes = state.notes.filter(nt => nt.id !== deletedId);
+
+		renderSidebar();
+
 		$editorContainer.classList.add("hidden");
 		$emptyState.classList.remove("hidden");
-
-		await loadNotes();
 	} catch (err) {
 		notify(err.message, "error");
 	} finally {
 		state.busy = false;
+
+		setLoading($editorContainer, false);
 	}
 });
 
@@ -878,6 +942,8 @@ $noteList.addEventListener("click", event => {
 if (state.token) {
 	verifySession();
 } else {
+	$appLoader.classList.add("hidden");
+
 	showAuth();
 }
 
