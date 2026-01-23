@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ func ConnectToDatabase() (*Database, error) {
 	table.AddColumn("title", "TEXT", "")
 	table.AddColumn("body", "TEXT", "")
 	table.AddColumn("tags", "TEXT", "")
+	table.AddColumn("version", "TEXT", "NOT NULL DEFAULT 'initial'")
 	table.AddColumn("updated_at", "INTEGER", "")
 	table.AddColumn("created_at", "INTEGER", "")
 
@@ -51,7 +54,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 		tags string
 	)
 
-	err := d.QueryRowContext(ctx, "SELECT id, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+	err := d.QueryRowContext(ctx, "SELECT id, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, version, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -66,7 +69,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 }
 
 func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
-	rows, err := d.QueryContext(ctx, "SELECT id, title, LENGTH(CAST(body AS BLOB)) as size, tags, updated_at, created_at FROM scratches ORDER BY created_at DESC")
+	rows, err := d.QueryContext(ctx, "SELECT id, title, LENGTH(CAST(body AS BLOB)) as size, tags, version, updated_at, created_at FROM scratches ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +84,7 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 			tags string
 		)
 
-		err = rows.Scan(&sc.ID, &sc.Title, &sc.Size, &tags, &sc.UpdatedAt, &sc.CreatedAt)
+		err = rows.Scan(&sc.ID, &sc.Title, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -102,13 +105,14 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 func (d *Database) Create(sc *Scratch) error {
 	now := time.Now().Unix()
 
+	sc.Version = hash()
 	sc.UpdatedAt = now
 	sc.CreatedAt = now
 
-	return d.QueryRow("INSERT INTO scratches (title, body, tags, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
+	return d.QueryRow("INSERT INTO scratches (title, body, tags, version, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id", sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.Version, sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
 }
 
-func (d *Database) Update(id int64, req *ScratchUpdateRequest) error {
+func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (string, error) {
 	var (
 		fields []string
 		args   []any
@@ -130,21 +134,60 @@ func (d *Database) Update(id int64, req *ScratchUpdateRequest) error {
 	}
 
 	if len(fields) == 0 {
-		return nil
+		return version, nil
 	}
+
+	newVersion := hash()
+
+	fields = append(fields, "version = ?")
+	args = append(args, newVersion)
 
 	fields = append(fields, "updated_at = ?")
 	args = append(args, time.Now().Unix())
 
-	args = append(args, id)
+	args = append(args, id, version)
 
-	query := fmt.Sprintf("UPDATE scratches SET %s WHERE id = ?", strings.Join(fields, ", "))
+	query := fmt.Sprintf("UPDATE scratches SET %s WHERE id = ? AND version = ?", strings.Join(fields, ", "))
 
-	_, err := d.Exec(query, args...)
-	return err
+	result, err := d.Exec(query, args...)
+	if err != nil {
+		return "", err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+
+	if rowsAffected == 0 {
+		return "", ErrVersionMismatch
+	}
+
+	return newVersion, nil
 }
 
-func (d *Database) Delete(id int64) error {
-	_, err := d.Exec("DELETE FROM scratches WHERE id = ?", id)
-	return err
+func (d *Database) Delete(id int64, version string) error {
+	result, err := d.Exec("DELETE FROM scratches WHERE id = ? AND version = ?", id, version)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrVersionMismatch
+	}
+
+	return nil
+}
+
+func hash() string {
+	b := make([]byte, 4)
+
+	rand.Read(b)
+
+	return hex.EncodeToString(b)
 }

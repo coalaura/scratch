@@ -14,6 +14,7 @@ const state = {
 		title: "",
 		body: "",
 		tags: [],
+		version: "",
 	},
 	layout: {
 		sidebarWidth: parseInt(localStorage.getItem("scratch_layout_sidebar_width"), 10) || 280,
@@ -121,6 +122,10 @@ async function api(method, path, body = null, opts = {}) {
 
 		if (response.status === 403) {
 			throw new Error("Auth");
+		}
+
+		if (response.status === 409) {
+			throw new Error("Conflict");
 		}
 
 		if (!response.ok) {
@@ -430,6 +435,7 @@ function captureCurrentNote() {
 		title: $inputTitle.value,
 		body: $editorBody.value,
 		tags: note.tags ? [...note.tags] : [],
+		version: note.version,
 	};
 }
 
@@ -472,12 +478,14 @@ async function saveSnapshot(snapshot) {
 	setStatus("SAVING...");
 
 	try {
-		await api("PUT", `/-/note/${snapshot.id}`, {
+		const response = await api("PUT", `/-/note/${snapshot.id}`, {
+			version: snapshot.version,
 			title: snapshot.title,
 			body: snapshot.body,
 			tags: snapshot.tags,
 		});
 
+		note.version = response.version;
 		note.updated_at = Math.floor(Date.now() / 1000);
 
 		if (snapshot.id === state.activeNoteId) {
@@ -485,14 +493,21 @@ async function saveSnapshot(snapshot) {
 				title: snapshot.title,
 				body: snapshot.body,
 				tags: snapshot.tags,
+				version: response.version,
 			};
 		}
 
 		updateNoteItem(snapshot.id);
 
 		setStatus("SAVED");
-	} catch {
-		setStatus("ERROR", true);
+	} catch (err) {
+		if (err.message === "Conflict") {
+			setStatus("CONFLICT", true);
+
+			notify("Note was modified elsewhere. Please reload.", "error");
+		} else {
+			setStatus("ERROR", true);
+		}
 	}
 }
 
@@ -598,6 +613,7 @@ async function selectNote(id, skipLoading = false) {
 		title: note.title,
 		body: note.body,
 		tags: note.tags || [],
+		version: note.version,
 	};
 
 	setStatus("READY");
@@ -784,6 +800,7 @@ $newBtn.addEventListener("click", async () => {
 			title: "",
 			body: "",
 			tags: [],
+			version: response.version,
 			size: 0,
 			updated_at: Math.floor(Date.now() / 1000),
 		});
@@ -811,12 +828,20 @@ $deleteBtn.addEventListener("click", async () => {
 		return;
 	}
 
+	const note = state.notes.find(_note => _note.id === state.activeNoteId);
+
+	if (!note) {
+		return;
+	}
+
 	state.busy = true;
 
 	setLoading($editorContainer, true);
 
 	try {
-		await api("DELETE", `/-/note/${state.activeNoteId}`);
+		await api("DELETE", `/-/note/${state.activeNoteId}`, {
+			version: note.version,
+		});
 
 		const deletedId = state.activeNoteId;
 
@@ -831,7 +856,11 @@ $deleteBtn.addEventListener("click", async () => {
 		$editorContainer.classList.add("hidden");
 		$emptyState.classList.remove("hidden");
 	} catch (err) {
-		notify(err.message, "error");
+		if (err.message === "Conflict") {
+			notify("Note was modified elsewhere. Please reload.", "error");
+		} else {
+			notify(err.message, "error");
+		}
 	} finally {
 		state.busy = false;
 

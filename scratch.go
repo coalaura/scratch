@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ type Scratch struct {
 	Title     string   `json:"title"`
 	Body      string   `json:"body"`
 	Tags      []string `json:"tags"`
+	Version   string   `json:"version"`
 	UpdatedAt int64    `json:"updated_at"`
 	CreatedAt int64    `json:"created_at"`
 
@@ -21,10 +23,18 @@ type Scratch struct {
 }
 
 type ScratchUpdateRequest struct {
+	Version string `json:"version"`
+
 	Title *string   `json:"title"`
 	Body  *string   `json:"body"`
 	Tags  *[]string `json:"tags"`
 }
+
+type ScratchDeleteRequest struct {
+	Version string `json:"version"`
+}
+
+var ErrVersionMismatch = errors.New("version mismatch")
 
 func (sc *Scratch) SetTags(tags string) {
 	sc.Tags = sc.Tags[:0]
@@ -98,8 +108,9 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	okay(w, map[string]int64{
-		"id": scratch.ID,
+	okay(w, map[string]any{
+		"id":      scratch.ID,
+		"version": scratch.Version,
 	})
 }
 
@@ -122,8 +133,20 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = database.Update(id, &req)
+	if req.Version == "" {
+		abort(w, http.StatusBadRequest, "version required")
+
+		return
+	}
+
+	newVersion, err := database.Update(id, req.Version, &req)
 	if err != nil {
+		if errors.Is(err, ErrVersionMismatch) {
+			abort(w, http.StatusConflict, "version mismatch")
+
+			return
+		}
+
 		abort(w, http.StatusInternalServerError, "failed to update")
 
 		log.Warnf("failed to update: %v\n", err)
@@ -131,7 +154,9 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	okay(w, nil)
+	okay(w, map[string]any{
+		"version": newVersion,
+	})
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
@@ -142,8 +167,31 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := database.Delete(id)
+	var req ScratchDeleteRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
+		abort(w, http.StatusBadRequest, "bad request")
+
+		log.Warnf("bad request: %v\n", err)
+
+		return
+	}
+
+	if req.Version == "" {
+		abort(w, http.StatusBadRequest, "version required")
+
+		return
+	}
+
+	err = database.Delete(id, req.Version)
+	if err != nil {
+		if errors.Is(err, ErrVersionMismatch) {
+			abort(w, http.StatusConflict, "version mismatch")
+
+			return
+		}
+
 		abort(w, http.StatusInternalServerError, "failed to delete")
 
 		log.Warnf("failed to delete: %v\n", err)
