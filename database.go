@@ -28,16 +28,16 @@ func ConnectToDatabase() (*Database, error) {
 	db.SetMaxIdleConns(16)
 	db.SetConnMaxLifetime(time.Hour)
 
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS scratches (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			title TEXT,
-			body TEXT,
-			tags TEXT,
-			updated_at INTEGER,
-			created_at INTEGER
-		)
-	`)
+	table := NewSchemaTable("scratches")
+
+	table.SetPrimary("id", "INTEGER", "AUTOINCREMENT")
+	table.AddColumn("title", "TEXT", "")
+	table.AddColumn("body", "TEXT", "")
+	table.AddColumn("tags", "TEXT", "")
+	table.AddColumn("updated_at", "INTEGER", "")
+	table.AddColumn("created_at", "INTEGER", "")
+
+	err = table.Apply(db)
 	if err != nil {
 		return nil, err
 	}
