@@ -45,6 +45,7 @@ const $authLayer = document.getElementById("auth-layer"),
 	$deleteBtn = document.getElementById("btn-delete"),
 	$closeBtn = document.getElementById("btn-close"),
 	$copyBtn = document.getElementById("btn-copy"),
+	$downloadBtn = document.getElementById("btn-download"),
 	$openPreviewBtn = document.getElementById("btn-open-preview"),
 	$closePreviewBtn = document.getElementById("btn-close-preview"),
 	$sidebar = document.getElementById("sidebar"),
@@ -892,6 +893,35 @@ $copyBtn.addEventListener("click", () => {
 			icon.classList.add("icon-copy");
 		}, 1200);
 	});
+});
+
+$downloadBtn.addEventListener("click", () => {
+	let name = $inputTitle.value
+		.trim()
+		.replace(/^[^\w]+|[^\w]+$/gm, "")
+		.replace(/[^\w]+/, "_");
+
+	if (!name) {
+		name = "document";
+	}
+
+	const blob = new Blob([$editorBody.value], {
+		type: "text/markdown",
+	});
+
+	const a = document.createElement("a"),
+		url = URL.createObjectURL(blob);
+
+	a.download = `${name}.md`;
+	a.style.display = "none";
+	a.href = url;
+
+	document.body.appendChild(a);
+
+	a.click();
+
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
 });
 
 $openPreviewBtn.addEventListener("click", () => {

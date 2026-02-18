@@ -318,6 +318,11 @@ button:hover {
 	mask-image: url("./icons/copy.svg");
 }
 
+.icon-download {
+	-webkit-mask-image: url("./icons/download.svg");
+	mask-image: url("./icons/download.svg");
+}
+
 .icon-check {
 	-webkit-mask-image: url("./icons/check.svg");
 	mask-image: url("./icons/check.svg");
