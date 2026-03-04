@@ -1316,6 +1316,14 @@ $noteList.addEventListener("drop", async event => {
 
 			if (prevFolder && nextFolder) {
 				newSortOrder = (prevFolder.sort_order + nextFolder.sort_order) / 2;
+
+				if (newSortOrder === prevFolder.sort_order || newSortOrder === nextFolder.sort_order) {
+					await api("POST", "/-/cleanup");
+
+					await loadNotes();
+
+					return;
+				}
 			} else if (prevFolder) {
 				newSortOrder = prevFolder.sort_order + 1024;
 			} else if (nextFolder) {
@@ -1384,6 +1392,14 @@ $noteList.addEventListener("drop", async event => {
 
 			if (prevNote && nextNote) {
 				newSortOrder = (prevNote.sort_order + nextNote.sort_order) / 2;
+
+				if (newSortOrder === prevNote.sort_order || newSortOrder === nextNote.sort_order) {
+					await api("POST", "/-/cleanup");
+
+					await loadNotes();
+
+					return;
+				}
 			} else if (prevNote) {
 				newSortOrder = prevNote.sort_order + 1024;
 			} else if (nextNote) {

@@ -228,6 +228,17 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	okay(w, nil)
 }
 
+func HandleCleanup(w http.ResponseWriter, r *http.Request) {
+	err := database.CleanupSortOrders(r.Context())
+	if err != nil {
+		abort(w, http.StatusInternalServerError, "failed to run cleanup")
+		log.Warnf("failed to run cleanup: %v\n", err)
+		return
+	}
+
+	okay(w, nil)
+}
+
 func HandleFolderList(w http.ResponseWriter, r *http.Request) {
 	folders, err := database.FindAllFolders(r.Context())
 	if err != nil {

@@ -344,6 +344,75 @@ func (d *Database) DeleteFolder(id int64, version string) error {
 	return err
 }
 
+func (d *Database) CleanupSortOrders(ctx context.Context) error {
+	rows, err := d.QueryContext(ctx, "SELECT id FROM folders ORDER BY sort_order ASC, created_at DESC")
+	if err != nil {
+		return err
+	}
+
+	var folderIDs []int64
+
+	for rows.Next() {
+		var id int64
+
+		err = rows.Scan(&id)
+		if err != nil {
+			rows.Close()
+
+			return err
+		}
+
+		folderIDs = append(folderIDs, id)
+	}
+
+	rows.Close()
+
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	for i, id := range folderIDs {
+		_, err := tx.ExecContext(ctx, "UPDATE folders SET sort_order = ? WHERE id = ?", float64(i+1)*1024, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	rows, err = d.QueryContext(ctx, "SELECT id FROM scratches ORDER BY folder_id ASC, sort_order ASC, created_at DESC")
+	if err != nil {
+		return err
+	}
+
+	var scratchIDs []int64
+
+	for rows.Next() {
+		var id int64
+
+		err = rows.Scan(&id)
+		if err != nil {
+			rows.Close()
+
+			return err
+		}
+
+		scratchIDs = append(scratchIDs, id)
+	}
+
+	rows.Close()
+
+	for i, id := range scratchIDs {
+		_, err := tx.ExecContext(ctx, "UPDATE scratches SET sort_order = ? WHERE id = ?", float64(i+1)*1024, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func hash() string {
 	b := make([]byte, 4)
 
