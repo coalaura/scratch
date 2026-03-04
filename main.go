@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/coalaura/plain"
 	"github.com/go-chi/chi/middleware"
@@ -69,22 +67,6 @@ func main() {
 		Addr:    addr,
 		Handler: r,
 	}
-
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-
-		for {
-			log.Println("Running sort order cleanup...")
-
-			err := database.CleanupSortOrders(context.Background())
-			if err != nil {
-				log.Warnf("failed to cleanup sort orders: %v\n", err)
-			}
-
-			<-ticker.C
-		}
-	}()
 
 	go func() {
 		log.Printf("Listening at http://localhost%s/\n", addr)

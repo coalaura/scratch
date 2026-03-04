@@ -665,6 +665,12 @@ async function moveFolder(folderId, newSortOrder) {
 			sort_order: newSortOrder,
 		});
 
+		if (response.needs_cleanup) {
+			await loadNotes();
+
+			return;
+		}
+
 		folder.version = response.version;
 		folder.sort_order = newSortOrder;
 
@@ -692,6 +698,12 @@ async function moveNoteToFolder(noteId, folderId, newSortOrder = null) {
 		}
 
 		const response = await api("PUT", `/-/note/${noteId}`, payload);
+
+		if (response.needs_cleanup) {
+			await loadNotes();
+
+			return;
+		}
 
 		note.version = response.version;
 		note.folder_id = folderId;
@@ -1316,14 +1328,6 @@ $noteList.addEventListener("drop", async event => {
 
 			if (prevFolder && nextFolder) {
 				newSortOrder = (prevFolder.sort_order + nextFolder.sort_order) / 2;
-
-				if (newSortOrder === prevFolder.sort_order || newSortOrder === nextFolder.sort_order) {
-					await api("POST", "/-/cleanup");
-
-					await loadNotes();
-
-					return;
-				}
 			} else if (prevFolder) {
 				newSortOrder = prevFolder.sort_order + 1024;
 			} else if (nextFolder) {
@@ -1392,14 +1396,6 @@ $noteList.addEventListener("drop", async event => {
 
 			if (prevNote && nextNote) {
 				newSortOrder = (prevNote.sort_order + nextNote.sort_order) / 2;
-
-				if (newSortOrder === prevNote.sort_order || newSortOrder === nextNote.sort_order) {
-					await api("POST", "/-/cleanup");
-
-					await loadNotes();
-
-					return;
-				}
 			} else if (prevNote) {
 				newSortOrder = prevNote.sort_order + 1024;
 			} else if (nextNote) {

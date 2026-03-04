@@ -13,7 +13,7 @@ import (
 type Scratch struct {
 	ID        int64    `json:"id"`
 	FolderID  int64    `json:"folder_id"`
-	SortOrder float64  `json:"sort_order"`
+	SortOrder int64    `json:"sort_order"`
 	Title     string   `json:"title"`
 	Body      string   `json:"body"`
 	Tags      []string `json:"tags"`
@@ -39,13 +39,13 @@ type ScratchDeleteRequest struct {
 }
 
 type Folder struct {
-	ID         int64   `json:"id"`
-	SortOrder  float64 `json:"sort_order"`
-	IsExpanded bool    `json:"is_expanded"`
-	Name       string  `json:"name"`
-	Version    string  `json:"version"`
-	UpdatedAt  int64   `json:"updated_at"`
-	CreatedAt  int64   `json:"created_at"`
+	ID         int64  `json:"id"`
+	SortOrder  int64  `json:"sort_order"`
+	IsExpanded bool   `json:"is_expanded"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	UpdatedAt  int64  `json:"updated_at"`
+	CreatedAt  int64  `json:"created_at"`
 }
 
 type FolderUpdateRequest struct {
@@ -165,7 +165,7 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newVersion, err := database.Update(id, req.Version, &req)
+	newVersion, needsCleanup, err := database.Update(id, req.Version, &req)
 	if err != nil {
 		if errors.Is(err, ErrVersionMismatch) {
 			abort(w, http.StatusConflict, "version mismatch")
@@ -181,7 +181,8 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, map[string]any{
-		"version": newVersion,
+		"version":       newVersion,
+		"needs_cleanup": needsCleanup,
 	})
 }
 
@@ -306,7 +307,7 @@ func HandleFolderUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newVersion, err := database.UpdateFolder(id, req.Version, &req)
+	newVersion, needsCleanup, err := database.UpdateFolder(id, req.Version, &req)
 	if err != nil {
 		if errors.Is(err, ErrVersionMismatch) {
 			abort(w, http.StatusConflict, "version mismatch")
@@ -322,7 +323,8 @@ func HandleFolderUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, map[string]any{
-		"version": newVersion,
+		"version":       newVersion,
+		"needs_cleanup": needsCleanup,
 	})
 }
 

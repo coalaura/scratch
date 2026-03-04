@@ -73,11 +73,12 @@ func ConnectToDatabase() (*Database, error) {
 
 func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 	var (
-		sc   Scratch
-		tags string
+		sc        Scratch
+		tags      string
+		sortOrder float64
 	)
 
-	err := d.QueryRowContext(ctx, "SELECT id, folder_id, sort_order, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, version, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.FolderID, &sc.SortOrder, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
+	err := d.QueryRowContext(ctx, "SELECT id, folder_id, sort_order, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, version, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.FolderID, &sortOrder, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -86,6 +87,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 		return nil, err
 	}
 
+	sc.SortOrder = int64(sortOrder)
 	sc.SetTags(tags)
 
 	return &sc, nil
@@ -103,15 +105,17 @@ func (d *Database) FindAll(ctx context.Context) ([]Scratch, error) {
 
 	for rows.Next() {
 		var (
-			sc   Scratch
-			tags string
+			sc        Scratch
+			tags      string
+			sortOrder float64
 		)
 
-		err = rows.Scan(&sc.ID, &sc.FolderID, &sc.SortOrder, &sc.Title, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
+		err = rows.Scan(&sc.ID, &sc.FolderID, &sortOrder, &sc.Title, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
 
+		sc.SortOrder = int64(sortOrder)
 		sc.SetTags(tags)
 
 		scratches = append(scratches, sc)
@@ -133,16 +137,17 @@ func (d *Database) Create(sc *Scratch) error {
 	sc.CreatedAt = now
 
 	if sc.SortOrder == 0 {
-		sc.SortOrder = float64(now)
+		sc.SortOrder = now
 	}
 
 	return d.QueryRow("INSERT INTO scratches (folder_id, sort_order, title, body, tags, version, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id", sc.FolderID, sc.SortOrder, sc.Title, sc.Body, strings.Join(sc.Tags, ","), sc.Version, sc.UpdatedAt, sc.CreatedAt).Scan(&sc.ID)
 }
 
-func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (string, error) {
+func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (string, bool, error) {
 	var (
-		fields []string
-		args   []any
+		fields       []string
+		args         []any
+		needsCleanup bool
 	)
 
 	if req.FolderID != nil {
@@ -153,6 +158,10 @@ func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (
 	if req.SortOrder != nil {
 		fields = append(fields, "sort_order = ?")
 		args = append(args, *req.SortOrder)
+
+		if *req.SortOrder != float64(int64(*req.SortOrder)) {
+			needsCleanup = true
+		}
 	}
 
 	if req.Title != nil {
@@ -171,7 +180,7 @@ func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (
 	}
 
 	if len(fields) == 0 {
-		return version, nil
+		return version, false, nil
 	}
 
 	newVersion := hash()
@@ -188,19 +197,26 @@ func (d *Database) Update(id int64, version string, req *ScratchUpdateRequest) (
 
 	result, err := d.Exec(query, args...)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if rowsAffected == 0 {
-		return "", ErrVersionMismatch
+		return "", false, ErrVersionMismatch
 	}
 
-	return newVersion, nil
+	if needsCleanup {
+		err = d.CleanupSortOrders(context.Background())
+		if err != nil {
+			return "", false, err
+		}
+	}
+
+	return newVersion, needsCleanup, nil
 }
 
 func (d *Database) Delete(id int64, version string) error {
@@ -229,7 +245,7 @@ func (d *Database) CreateFolder(folder *Folder) error {
 	folder.CreatedAt = now
 
 	if folder.SortOrder == 0 {
-		folder.SortOrder = float64(now)
+		folder.SortOrder = now
 	}
 
 	folder.IsExpanded = true
@@ -251,13 +267,15 @@ func (d *Database) FindAllFolders(ctx context.Context) ([]Folder, error) {
 		var (
 			f          Folder
 			isExpanded int
+			sortOrder  float64
 		)
 
-		err = rows.Scan(&f.ID, &f.SortOrder, &isExpanded, &f.Name, &f.Version, &f.UpdatedAt, &f.CreatedAt)
+		err = rows.Scan(&f.ID, &sortOrder, &isExpanded, &f.Name, &f.Version, &f.UpdatedAt, &f.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
 
+		f.SortOrder = int64(sortOrder)
 		f.IsExpanded = isExpanded == 1
 
 		folders = append(folders, f)
@@ -266,10 +284,11 @@ func (d *Database) FindAllFolders(ctx context.Context) ([]Folder, error) {
 	return folders, rows.Err()
 }
 
-func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateRequest) (string, error) {
+func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateRequest) (string, bool, error) {
 	var (
-		fields []string
-		args   []any
+		fields       []string
+		args         []any
+		needsCleanup bool
 	)
 
 	if req.Name != nil {
@@ -280,6 +299,10 @@ func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateReque
 	if req.SortOrder != nil {
 		fields = append(fields, "sort_order = ?")
 		args = append(args, *req.SortOrder)
+
+		if *req.SortOrder != float64(int64(*req.SortOrder)) {
+			needsCleanup = true
+		}
 	}
 
 	if req.IsExpanded != nil {
@@ -293,7 +316,7 @@ func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateReque
 	}
 
 	if len(fields) == 0 {
-		return version, nil
+		return version, false, nil
 	}
 
 	newVersion := hash()
@@ -310,19 +333,26 @@ func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateReque
 
 	result, err := d.Exec(query, args...)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if rowsAffected == 0 {
-		return "", ErrVersionMismatch
+		return "", false, ErrVersionMismatch
 	}
 
-	return newVersion, nil
+	if needsCleanup {
+		err = d.CleanupSortOrders(context.Background())
+		if err != nil {
+			return "", false, err
+		}
+	}
+
+	return newVersion, needsCleanup, nil
 }
 
 func (d *Database) DeleteFolder(id int64, version string) error {
