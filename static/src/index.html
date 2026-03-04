@@ -24,6 +24,32 @@
 			</div>
 		</div>
 
+		<div id="prompt-modal" class="modal-layer hidden">
+			<div class="modal-box">
+				<h2 id="prompt-title">Prompt</h2>
+
+				<input type="text" id="input-prompt" placeholder="..." />
+
+				<div class="modal-actions">
+					<button id="btn-prompt-cancel">CANCEL</button>
+					<button id="btn-prompt-confirm" class="btn-primary">OK</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="confirm-modal" class="modal-layer hidden">
+			<div class="modal-box">
+				<h2 id="confirm-title">Confirm</h2>
+
+				<p id="confirm-message" class="modal-message"></p>
+
+				<div class="modal-actions">
+					<button id="btn-confirm-cancel">CANCEL</button>
+					<button id="btn-confirm-ok" class="btn-danger">DELETE</button>
+				</div>
+			</div>
+		</div>
+
 		<div id="app-loader" class="app-loader">
 			<div class="spinner"></div>
 
@@ -33,14 +59,19 @@
 		<div class="layout">
 			<aside class="sidebar" id="sidebar">
 				<div class="sidebar-header">
-					<div>
+					<div class="brand-row">
 						<span class="brand">SCRATCH</span>
 						<span id="label-version" class="version"></span>
 					</div>
 
-					<button id="btn-new" title="New Note">
-						<i class="icon icon-plus"></i>
-					</button>
+					<div class="action-row">
+						<button id="btn-new-folder" title="New Folder">
+							<i class="icon icon-folder-plus"></i><span>Folder</span>
+						</button>
+						<button id="btn-new" title="New Note">
+							<i class="icon icon-plus"></i><span>Note</span>
+						</button>
+					</div>
 				</div>
 
 				<div id="note-list" class="note-list"></div>

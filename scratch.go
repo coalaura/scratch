@@ -12,6 +12,8 @@ import (
 
 type Scratch struct {
 	ID        int64    `json:"id"`
+	FolderID  int64    `json:"folder_id"`
+	SortOrder float64  `json:"sort_order"`
 	Title     string   `json:"title"`
 	Body      string   `json:"body"`
 	Tags      []string `json:"tags"`
@@ -25,12 +27,33 @@ type Scratch struct {
 type ScratchUpdateRequest struct {
 	Version string `json:"version"`
 
-	Title *string   `json:"title"`
-	Body  *string   `json:"body"`
-	Tags  *[]string `json:"tags"`
+	FolderID  *int64    `json:"folder_id"`
+	SortOrder *float64  `json:"sort_order"`
+	Title     *string   `json:"title"`
+	Body      *string   `json:"body"`
+	Tags      *[]string `json:"tags"`
 }
 
 type ScratchDeleteRequest struct {
+	Version string `json:"version"`
+}
+
+type Folder struct {
+	ID        int64   `json:"id"`
+	SortOrder float64 `json:"sort_order"`
+	Name      string  `json:"name"`
+	Version   string  `json:"version"`
+	UpdatedAt int64   `json:"updated_at"`
+	CreatedAt int64   `json:"created_at"`
+}
+
+type FolderUpdateRequest struct {
+	Version   string   `json:"version"`
+	Name      *string  `json:"name"`
+	SortOrder *float64 `json:"sort_order"`
+}
+
+type FolderDeleteRequest struct {
 	Version string `json:"version"`
 }
 
@@ -109,8 +132,9 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, map[string]any{
-		"id":      scratch.ID,
-		"version": scratch.Version,
+		"id":         scratch.ID,
+		"version":    scratch.Version,
+		"sort_order": scratch.SortOrder,
 	})
 }
 
@@ -195,6 +219,135 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		abort(w, http.StatusInternalServerError, "failed to delete")
 
 		log.Warnf("failed to delete: %v\n", err)
+
+		return
+	}
+
+	okay(w, nil)
+}
+
+func HandleFolderList(w http.ResponseWriter, r *http.Request) {
+	folders, err := database.FindAllFolders(r.Context())
+	if err != nil {
+		abort(w, http.StatusInternalServerError, "failed to list folders")
+
+		log.Warnf("failed to find all folders: %v\n", err)
+
+		return
+	}
+
+	okay(w, folders)
+}
+
+func HandleFolderCreate(w http.ResponseWriter, r *http.Request) {
+	var folder Folder
+
+	err := json.NewDecoder(r.Body).Decode(&folder)
+	if err != nil {
+		abort(w, http.StatusBadRequest, "bad request")
+
+		log.Warnf("bad request: %v\n", err)
+
+		return
+	}
+
+	err = database.CreateFolder(&folder)
+	if err != nil {
+		abort(w, http.StatusInternalServerError, "failed to create folder")
+
+		log.Warnf("failed to create folder: %v\n", err)
+
+		return
+	}
+
+	okay(w, map[string]any{
+		"id":         folder.ID,
+		"version":    folder.Version,
+		"sort_order": folder.SortOrder,
+	})
+}
+
+func HandleFolderUpdate(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r, "id")
+	if !ok {
+		abort(w, http.StatusBadRequest, "invalid id")
+
+		return
+	}
+
+	var req FolderUpdateRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		abort(w, http.StatusBadRequest, "bad request")
+
+		log.Warnf("bad request: %v\n", err)
+
+		return
+	}
+
+	if req.Version == "" {
+		abort(w, http.StatusBadRequest, "version required")
+
+		return
+	}
+
+	newVersion, err := database.UpdateFolder(id, req.Version, &req)
+	if err != nil {
+		if errors.Is(err, ErrVersionMismatch) {
+			abort(w, http.StatusConflict, "version mismatch")
+
+			return
+		}
+
+		abort(w, http.StatusInternalServerError, "failed to update folder")
+
+		log.Warnf("failed to update folder: %v\n", err)
+
+		return
+	}
+
+	okay(w, map[string]any{
+		"version": newVersion,
+	})
+}
+
+func HandleFolderDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(r, "id")
+	if !ok {
+		abort(w, http.StatusBadRequest, "invalid id")
+
+		return
+	}
+
+	var req FolderDeleteRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		abort(w, http.StatusBadRequest, "bad request")
+
+		log.Warnf("bad request: %v\n", err)
+
+		return
+	}
+
+	if req.Version == "" {
+		abort(w, http.StatusBadRequest, "version required")
+
+		return
+	}
+
+	err = database.DeleteFolder(id, req.Version)
+	if err != nil {
+		if errors.Is(err, ErrVersionMismatch) {
+			abort(w, http.StatusConflict, "version mismatch")
+
+			return
+		}
+
+		abort(w, http.StatusInternalServerError, "failed to delete folder")
+
+		log.Warnf("failed to delete folder: %v\n", err)
 
 		return
 	}

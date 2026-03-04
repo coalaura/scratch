@@ -48,6 +48,11 @@ func main() {
 
 		gr.Get("/-/notes", HandleList)
 
+		gr.Get("/-/folders", HandleFolderList)
+		gr.Post("/-/folder", HandleFolderCreate)
+		gr.Put("/-/folder/{id}", HandleFolderUpdate)
+		gr.Delete("/-/folder/{id}", HandleFolderDelete)
+
 		gr.Post("/-/note", HandleCreate)
 		gr.Get("/-/note/{id}", HandleGet)
 		gr.Put("/-/note/{id}", HandleUpdate)

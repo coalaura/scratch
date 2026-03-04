@@ -6,10 +6,13 @@ import { marked } from "marked";
 const state = {
 	token: localStorage.getItem("scratch_token"),
 	notes: [],
+	folders: [],
+	collapsedFolders: JSON.parse(localStorage.getItem("scratch_collapsed_folders") || "[]"),
 	busy: false,
 	activeNoteId: null,
 	copyTimeout: null,
 	selectController: null,
+	draggedElement: null,
 	lastSaved: {
 		title: "",
 		body: "",
@@ -42,6 +45,7 @@ const $authLayer = document.getElementById("auth-layer"),
 	$resizerSidebar = document.getElementById("resizer-sidebar"),
 	$resizerSplit = document.getElementById("resizer-split"),
 	$newBtn = document.getElementById("btn-new"),
+	$newFolderBtn = document.getElementById("btn-new-folder"),
 	$deleteBtn = document.getElementById("btn-delete"),
 	$closeBtn = document.getElementById("btn-close"),
 	$copyBtn = document.getElementById("btn-copy"),
@@ -52,9 +56,110 @@ const $authLayer = document.getElementById("auth-layer"),
 	$editorSection = document.getElementById("editor-section"),
 	$previewSection = document.getElementById("preview-section"),
 	$splitView = document.querySelector(".split-view"),
-	$notificationArea = document.getElementById("notification-area");
+	$notificationArea = document.getElementById("notification-area"),
+	$promptModal = document.getElementById("prompt-modal"),
+	$promptTitle = document.getElementById("prompt-title"),
+	$inputPrompt = document.getElementById("input-prompt"),
+	$btnPromptCancel = document.getElementById("btn-prompt-cancel"),
+	$btnPromptConfirm = document.getElementById("btn-prompt-confirm"),
+	$confirmModal = document.getElementById("confirm-modal"),
+	$confirmTitle = document.getElementById("confirm-title"),
+	$confirmMessage = document.getElementById("confirm-message"),
+	$btnConfirmCancel = document.getElementById("btn-confirm-cancel"),
+	$btnConfirmOk = document.getElementById("btn-confirm-ok");
 
 let ignoreScroll = false;
+
+function showConfirm(title, message) {
+	return new Promise(resolve => {
+		$confirmTitle.textContent = title;
+
+		$confirmMessage.textContent = message;
+
+		$confirmModal.classList.remove("hidden");
+
+		$btnConfirmOk.focus();
+
+		const cleanup = () => {
+			$confirmModal.classList.add("hidden");
+
+			$btnConfirmCancel.removeEventListener("click", onCancel);
+			$btnConfirmOk.removeEventListener("click", onConfirm);
+
+			document.removeEventListener("keydown", onKeydown);
+		};
+
+		const onCancel = () => {
+			cleanup();
+
+			resolve(false);
+		};
+
+		const onConfirm = () => {
+			cleanup();
+
+			resolve(true);
+		};
+
+		const onKeydown = event => {
+			if (event.key === "Escape") {
+				onCancel();
+			}
+		};
+
+		$btnConfirmCancel.addEventListener("click", onCancel);
+		$btnConfirmOk.addEventListener("click", onConfirm);
+
+		document.addEventListener("keydown", onKeydown);
+	});
+}
+
+function showPrompt(title, defaultText = "") {
+	return new Promise(resolve => {
+		$promptTitle.textContent = title;
+
+		$inputPrompt.value = defaultText;
+
+		$promptModal.classList.remove("hidden");
+
+		$inputPrompt.focus();
+		$inputPrompt.select();
+
+		const cleanup = () => {
+			$promptModal.classList.add("hidden");
+
+			$btnPromptCancel.removeEventListener("click", onCancel);
+			$btnPromptConfirm.removeEventListener("click", onConfirm);
+
+			document.removeEventListener("keydown", onKeydown);
+		};
+
+		const onCancel = () => {
+			cleanup();
+
+			resolve(null);
+		};
+
+		const onConfirm = () => {
+			cleanup();
+
+			resolve($inputPrompt.value);
+		};
+
+		const onKeydown = event => {
+			if (event.key === "Enter") {
+				onConfirm();
+			} else if (event.key === "Escape") {
+				onCancel();
+			}
+		};
+
+		$btnPromptCancel.addEventListener("click", onCancel);
+		$btnPromptConfirm.addEventListener("click", onConfirm);
+
+		document.addEventListener("keydown", onKeydown);
+	});
+}
 
 function notify(message, type = "info") {
 	const notificationEl = document.createElement("div");
@@ -295,7 +400,10 @@ async function loadNotes() {
 	setLoading($sidebar, true);
 
 	try {
-		state.notes = (await api("GET", "/-/notes")) || [];
+		const [notes, folders] = await Promise.all([api("GET", "/-/notes"), api("GET", "/-/folders")]);
+
+		state.notes = notes || [];
+		state.folders = folders || [];
 
 		renderSidebar();
 
@@ -322,8 +430,272 @@ async function loadNotes() {
 function renderSidebar() {
 	$noteList.innerHTML = "";
 
+	const noteMap = new Map();
+
+	for (const folder of state.folders) {
+		noteMap.set(folder.id, []);
+	}
+
+	noteMap.set(0, []); // 0 or null for root notes
+
 	for (const note of state.notes) {
+		const fId = note.folder_id || 0;
+
+		if (noteMap.has(fId)) {
+			noteMap.get(fId).push(note);
+		} else {
+			noteMap.get(0).push(note);
+		}
+	}
+
+	state.folders.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+
+	for (const folder of state.folders) {
+		$noteList.appendChild(createFolderItem(folder, noteMap.get(folder.id)));
+	}
+
+	for (const note of noteMap.get(0)) {
 		$noteList.appendChild(createNoteItem(note));
+	}
+}
+
+function createFolderItem(folder, notes) {
+	const folderContainer = document.createElement("div");
+
+	folderContainer.className = "folder-container";
+	folderContainer.dataset.folderId = String(folder.id);
+	folderContainer.draggable = true;
+
+	folderContainer.addEventListener("dragstart", event => {
+		if (event.target !== folderContainer) {
+			return;
+		}
+
+		event.dataTransfer.setData("application/x-folder-id", String(folder.id));
+		event.dataTransfer.effectAllowed = "move";
+
+		state.draggedElement = folderContainer;
+
+		requestAnimationFrame(() => {
+			folderContainer.classList.add("is-dragging");
+		});
+	});
+
+	folderContainer.addEventListener("dragend", () => {
+		folderContainer.classList.remove("is-dragging");
+
+		state.draggedElement = null;
+	});
+
+	const folderEl = document.createElement("div");
+
+	folderEl.className = `folder-item ${state.collapsedFolders.includes(folder.id) ? "" : "expanded"}`;
+	folderEl.dataset.folderId = String(folder.id);
+
+	const folderTitle = document.createElement("div");
+
+	folderTitle.className = "folder-title";
+	folderTitle.innerHTML = `<i class="icon-chevron"></i><span>${folder.name || "New Folder"}</span>`;
+
+	const folderActions = document.createElement("div");
+
+	folderActions.className = "folder-actions";
+
+	const folderRename = document.createElement("button");
+
+	folderRename.className = "folder-action";
+	folderRename.innerHTML = `<i class="icon icon-edit"></i>`;
+	folderRename.title = "Rename Folder";
+
+	const folderDelete = document.createElement("button");
+
+	folderDelete.className = "folder-action danger";
+	folderDelete.innerHTML = `<i class="icon icon-trash"></i>`;
+	folderDelete.title = "Delete Folder";
+
+	folderActions.appendChild(folderRename);
+	folderActions.appendChild(folderDelete);
+
+	folderEl.appendChild(folderTitle);
+	folderEl.appendChild(folderActions);
+
+	const contentEl = document.createElement("div");
+
+	contentEl.className = `folder-content ${state.collapsedFolders.includes(folder.id) ? "" : "expanded"}`;
+
+	for (const note of notes) {
+		contentEl.appendChild(createNoteItem(note));
+	}
+
+	folderContainer.appendChild(folderEl);
+	folderContainer.appendChild(contentEl);
+
+	folderEl.addEventListener("click", event => {
+		// Prevent collapse/expand when clicking action buttons
+		if (event.target.closest(".folder-actions")) {
+			return;
+		}
+
+		const isCollapsed = !folderEl.classList.contains("expanded");
+
+		folderEl.classList.toggle("expanded");
+		contentEl.classList.toggle("expanded");
+
+		if (isCollapsed) {
+			state.collapsedFolders = state.collapsedFolders.filter(id => id !== folder.id);
+		} else {
+			state.collapsedFolders.push(folder.id);
+		}
+
+		localStorage.setItem("scratch_collapsed_folders", JSON.stringify(state.collapsedFolders));
+	});
+
+	folderRename.addEventListener("click", async event => {
+		event.stopPropagation();
+
+		if (state.busy) {
+			return;
+		}
+
+		const newName = await showPrompt("Rename folder:", folder.name);
+
+		if (newName === null || !newName.trim() || newName.trim() === folder.name) {
+			return;
+		}
+
+		state.busy = true;
+
+		setLoading($sidebar, true);
+
+		try {
+			const response = await api("PUT", `/-/folder/${folder.id}`, {
+				version: folder.version,
+				name: newName.trim(),
+			});
+
+			folder.name = newName.trim();
+			folder.version = response.version;
+
+			renderSidebar();
+		} catch (err) {
+			notify(err.message, "error");
+		} finally {
+			state.busy = false;
+
+			setLoading($sidebar, false);
+		}
+	});
+
+	folderDelete.addEventListener("click", async event => {
+		event.stopPropagation();
+
+		const confirmed = await showConfirm("Delete Folder", `Delete folder "${folder.name}"? Notes inside will be moved to the root level.`);
+
+		if (!confirmed) {
+			return;
+		}
+
+		if (state.busy) {
+			return;
+		}
+
+		state.busy = true;
+
+		setLoading($sidebar, true);
+
+		try {
+			await api("DELETE", `/-/folder/${folder.id}`, {
+				version: folder.version,
+			});
+
+			state.folders = state.folders.filter(_folder => _folder.id !== folder.id);
+
+			for (const note of state.notes) {
+				if (note.folder_id === folder.id) {
+					note.folder_id = 0;
+				}
+			}
+
+			renderSidebar();
+		} catch (err) {
+			notify(err.message, "error");
+		} finally {
+			state.busy = false;
+
+			setLoading($sidebar, false);
+		}
+	});
+
+	folderEl.addEventListener("dragover", event => {
+		event.preventDefault();
+
+		if (state.draggedElement?.classList.contains("folder-container")) {
+			return;
+		}
+
+		folderEl.classList.add("drag-over");
+	});
+
+	folderEl.addEventListener("dragleave", () => {
+		folderEl.classList.remove("drag-over");
+	});
+
+	return folderContainer;
+}
+
+async function moveFolder(folderId, newSortOrder) {
+	const folder = state.folders.find(_folder => _folder.id === folderId);
+
+	if (!folder) {
+		return;
+	}
+
+	try {
+		const response = await api("PUT", `/-/folder/${folderId}`, {
+			version: folder.version,
+			sort_order: newSortOrder,
+		});
+
+		folder.version = response.version;
+		folder.sort_order = newSortOrder;
+
+		renderSidebar();
+	} catch {
+		notify("Failed to move folder", "error");
+	}
+}
+
+async function moveNoteToFolder(noteId, folderId, newSortOrder = null) {
+	const note = state.notes.find(n => n.id === noteId);
+
+	if (!note || (note.folder_id === folderId && newSortOrder === null)) {
+		return;
+	}
+
+	try {
+		const payload = {
+			version: note.version,
+			folder_id: folderId,
+		};
+
+		if (newSortOrder !== null) {
+			payload.sort_order = newSortOrder;
+		}
+
+		const response = await api("PUT", `/-/note/${noteId}`, payload);
+
+		note.version = response.version;
+		note.folder_id = folderId;
+
+		if (newSortOrder !== null) {
+			note.sort_order = newSortOrder;
+
+			state.notes.sort((a, b) => a.sort_order - b.sort_order || b.created_at - a.created_at);
+		}
+
+		renderSidebar();
+	} catch {
+		notify("Failed to move note", "error");
 	}
 }
 
@@ -331,8 +703,25 @@ function createNoteItem(note) {
 	const noteEl = document.createElement("div");
 
 	noteEl.dataset.noteId = String(note.id);
-
 	noteEl.className = `note-item${note.id === state.activeNoteId ? " active" : ""}`;
+	noteEl.draggable = true;
+
+	noteEl.addEventListener("dragstart", event => {
+		event.dataTransfer.setData("text/plain", String(note.id));
+		event.dataTransfer.effectAllowed = "move";
+
+		state.draggedElement = noteEl;
+
+		requestAnimationFrame(() => {
+			noteEl.classList.add("is-dragging");
+		});
+	});
+
+	noteEl.addEventListener("dragend", () => {
+		noteEl.classList.remove("is-dragging");
+
+		state.draggedElement = null;
+	});
 
 	const titleEl = document.createElement("div");
 
@@ -382,24 +771,6 @@ function createNoteItem(note) {
 	noteEl.appendChild(tagsEl);
 
 	return noteEl;
-}
-
-function updateNoteItem(noteId) {
-	const note = state.notes.find(_note => _note.id === noteId);
-
-	if (!note) {
-		return;
-	}
-
-	const existingEl = $noteList.querySelector(`.note-item[data-note-id="${noteId}"]`);
-
-	if (!existingEl) {
-		return;
-	}
-
-	const newEl = createNoteItem(note);
-
-	existingEl.replaceWith(newEl);
 }
 
 function updateActiveNoteClass(prevId, newId) {
@@ -498,7 +869,7 @@ async function saveSnapshot(snapshot) {
 			};
 		}
 
-		updateNoteItem(snapshot.id);
+		renderSidebar();
 
 		setStatus("SAVED");
 	} catch (err) {
@@ -780,6 +1151,247 @@ $logoutBtn.addEventListener("click", () => {
 	location.reload();
 });
 
+$newFolderBtn.addEventListener("click", async () => {
+	if (state.busy || $sidebar.classList.contains("is-loading")) {
+		return;
+	}
+
+	state.busy = true;
+
+	try {
+		const name = await showPrompt("Enter folder name:", "New Folder");
+
+		if (name === null || !name.trim()) {
+			state.busy = false;
+
+			return;
+		}
+
+		setLoading($sidebar, true);
+
+		const response = await api("POST", "/-/folder", {
+			name: name.trim(),
+		});
+
+		state.folders.push({
+			id: response.id,
+			name: name.trim(),
+			version: response.version,
+			sort_order: response.sort_order || 0,
+			updated_at: Math.floor(Date.now() / 1000),
+		});
+
+		renderSidebar();
+	} catch (err) {
+		notify(err.message, "error");
+	} finally {
+		state.busy = false;
+
+		setLoading($sidebar, false);
+	}
+});
+
+$noteList.addEventListener("dragover", event => {
+	event.preventDefault();
+
+	if (!state.draggedElement) {
+		return;
+	}
+
+	document.querySelectorAll(".drag-before, .drag-after").forEach(el => {
+		el.classList.remove("drag-before", "drag-after");
+	});
+
+	if (state.draggedElement.classList.contains("folder-container")) {
+		const folderContainer = event.target.closest(".folder-container");
+
+		if (folderContainer && folderContainer !== state.draggedElement) {
+			const rect = folderContainer.getBoundingClientRect();
+
+			if (event.clientY < rect.top + rect.height / 2) {
+				folderContainer.classList.add("drag-before");
+			} else {
+				folderContainer.classList.add("drag-after");
+			}
+		}
+
+		return;
+	}
+
+	const folderItem = event.target.closest(".folder-item");
+
+	if (folderItem) {
+		return; // Handled by folder's own dragover
+	}
+
+	const noteItem = event.target.closest(".note-item");
+
+	if (noteItem && noteItem !== state.draggedElement) {
+		const rect = noteItem.getBoundingClientRect();
+
+		if (event.clientY < rect.top + rect.height / 2) {
+			noteItem.classList.add("drag-before");
+		} else {
+			noteItem.classList.add("drag-after");
+		}
+	}
+});
+
+$noteList.addEventListener("dragleave", event => {
+	const target = event.target.closest(".note-item, .folder-container");
+
+	if (target) {
+		target.classList.remove("drag-before", "drag-after");
+	}
+});
+
+$noteList.addEventListener("drop", async event => {
+	event.preventDefault();
+
+	document.querySelectorAll(".drag-over").forEach(el => {
+		el.classList.remove("drag-over");
+	});
+
+	const targetNoteEl = document.querySelector(".note-item.drag-before, .note-item.drag-after"),
+		targetFolderContainerEl = document.querySelector(".folder-container.drag-before, .folder-container.drag-after");
+
+	const isBefore = targetNoteEl ? targetNoteEl.classList.contains("drag-before") : targetFolderContainerEl ? targetFolderContainerEl.classList.contains("drag-before") : false;
+
+	document.querySelectorAll(".drag-before, .drag-after").forEach(el => {
+		el.classList.remove("drag-before", "drag-after");
+	});
+
+	if (!state.draggedElement) {
+		return;
+	}
+
+	const draggedEl = state.draggedElement;
+
+	state.draggedElement.classList.remove("is-dragging");
+	state.draggedElement = null;
+
+	if (draggedEl.classList.contains("folder-container")) {
+		const folderId = parseInt(draggedEl.dataset.folderId, 10);
+
+		if (!folderId) {
+			return;
+		}
+
+		if (targetFolderContainerEl) {
+			const targetFolderId = parseInt(targetFolderContainerEl.dataset.folderId, 10);
+
+			if (targetFolderId === folderId) {
+				return;
+			}
+
+			const folderEls = Array.from($noteList.children).filter(el => el.classList.contains("folder-container") && el !== draggedEl);
+
+			const targetIndex = folderEls.indexOf(targetFolderContainerEl),
+				insertIndex = isBefore ? targetIndex : targetIndex + 1;
+
+			let newSortOrder = 0;
+
+			const prevEl = folderEls[insertIndex - 1],
+				nextEl = folderEls[insertIndex];
+
+			let prevFolder = null,
+				nextFolder = null;
+
+			if (prevEl) {
+				prevFolder = state.folders.find(_folder => _folder.id === parseInt(prevEl.dataset.folderId, 10));
+			}
+
+			if (nextEl) {
+				nextFolder = state.folders.find(_folder => _folder.id === parseInt(nextEl.dataset.folderId, 10));
+			}
+
+			if (prevFolder && nextFolder) {
+				newSortOrder = (prevFolder.sort_order + nextFolder.sort_order) / 2;
+			} else if (prevFolder) {
+				newSortOrder = prevFolder.sort_order + 1024;
+			} else if (nextFolder) {
+				newSortOrder = nextFolder.sort_order - 1024;
+			}
+
+			await moveFolder(folderId, newSortOrder);
+		}
+
+		return;
+	}
+
+	const noteId = parseInt(draggedEl.dataset.noteId, 10);
+
+	if (!noteId) {
+		return;
+	}
+
+	const targetFolderEl = event.target.closest(".folder-item");
+
+	if (targetFolderEl) {
+		const targetFolderId = parseInt(targetFolderEl.dataset.folderId, 10);
+
+		await moveNoteToFolder(noteId, targetFolderId);
+
+		return;
+	}
+
+	if (targetNoteEl) {
+		const targetNoteId = parseInt(targetNoteEl.dataset.noteId, 10),
+			targetNote = state.notes.find(n => n.id === targetNoteId);
+
+		if (targetNote) {
+			const container = targetNoteEl.parentElement;
+
+			let targetFolderId = 0;
+
+			if (container.classList.contains("folder-content")) {
+				const folderContainer = container.closest(".folder-container");
+
+				if (folderContainer) {
+					targetFolderId = parseInt(folderContainer.dataset.folderId, 10);
+				}
+			}
+
+			const noteEls = Array.from(container.children).filter(el => el.classList.contains("note-item") && el !== draggedEl);
+
+			const targetIndex = noteEls.indexOf(targetNoteEl),
+				insertIndex = isBefore ? targetIndex : targetIndex + 1;
+
+			let newSortOrder = 0;
+
+			const prevEl = noteEls[insertIndex - 1],
+				nextEl = noteEls[insertIndex];
+
+			let prevNote = null,
+				nextNote = null;
+
+			if (prevEl) {
+				prevNote = state.notes.find(n => n.id === parseInt(prevEl.dataset.noteId, 10));
+			}
+
+			if (nextEl) {
+				nextNote = state.notes.find(n => n.id === parseInt(nextEl.dataset.noteId, 10));
+			}
+
+			if (prevNote && nextNote) {
+				newSortOrder = (prevNote.sort_order + nextNote.sort_order) / 2;
+			} else if (prevNote) {
+				newSortOrder = prevNote.sort_order + 1024;
+			} else if (nextNote) {
+				newSortOrder = nextNote.sort_order - 1024;
+			}
+
+			await moveNoteToFolder(noteId, targetFolderId, newSortOrder);
+		}
+
+		return;
+	}
+
+	if (event.target === $noteList) {
+		await moveNoteToFolder(noteId, 0);
+	}
+});
+
 $newBtn.addEventListener("click", async () => {
 	if (state.busy || $sidebar.classList.contains("is-loading")) {
 		return;
@@ -798,10 +1410,12 @@ $newBtn.addEventListener("click", async () => {
 
 		state.notes.unshift({
 			id: response.id,
+			folder_id: 0,
 			title: "",
 			body: "",
 			tags: [],
 			version: response.version,
+			sort_order: response.sort_order || 0,
 			size: 0,
 			updated_at: Math.floor(Date.now() / 1000),
 		});
@@ -825,7 +1439,13 @@ $deleteBtn.addEventListener("click", async () => {
 		return;
 	}
 
-	if (!state.activeNoteId || !confirm("Delete this note?")) {
+	if (!state.activeNoteId) {
+		return;
+	}
+
+	const confirmed = await showConfirm("Delete Note", "Delete this note? This action cannot be undone.");
+
+	if (!confirmed) {
 		return;
 	}
 
