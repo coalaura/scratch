@@ -7,7 +7,6 @@ const state = {
 	token: localStorage.getItem("scratch_token"),
 	notes: [],
 	folders: [],
-	collapsedFolders: JSON.parse(localStorage.getItem("scratch_collapsed_folders") || "[]"),
 	busy: false,
 	activeNoteId: null,
 	copyTimeout: null,
@@ -489,7 +488,7 @@ function createFolderItem(folder, notes) {
 
 	const folderEl = document.createElement("div");
 
-	folderEl.className = `folder-item ${state.collapsedFolders.includes(folder.id) ? "" : "expanded"}`;
+	folderEl.className = `folder-item ${folder.is_expanded ? "expanded" : ""}`;
 	folderEl.dataset.folderId = String(folder.id);
 
 	const folderTitle = document.createElement("div");
@@ -521,7 +520,7 @@ function createFolderItem(folder, notes) {
 
 	const contentEl = document.createElement("div");
 
-	contentEl.className = `folder-content ${state.collapsedFolders.includes(folder.id) ? "" : "expanded"}`;
+	contentEl.className = `folder-content ${folder.is_expanded ? "expanded" : ""}`;
 
 	for (const note of notes) {
 		contentEl.appendChild(createNoteItem(note));
@@ -530,24 +529,34 @@ function createFolderItem(folder, notes) {
 	folderContainer.appendChild(folderEl);
 	folderContainer.appendChild(contentEl);
 
-	folderEl.addEventListener("click", event => {
-		// Prevent collapse/expand when clicking action buttons
+	folderEl.addEventListener("click", async event => {
 		if (event.target.closest(".folder-actions")) {
 			return;
 		}
 
-		const isCollapsed = !folderEl.classList.contains("expanded");
+		const isExpanded = folderEl.classList.contains("expanded"),
+			newExpandedState = !isExpanded;
 
 		folderEl.classList.toggle("expanded");
 		contentEl.classList.toggle("expanded");
 
-		if (isCollapsed) {
-			state.collapsedFolders = state.collapsedFolders.filter(id => id !== folder.id);
-		} else {
-			state.collapsedFolders.push(folder.id);
-		}
+		folder.is_expanded = newExpandedState;
 
-		localStorage.setItem("scratch_collapsed_folders", JSON.stringify(state.collapsedFolders));
+		try {
+			const response = await api("PUT", `/-/folder/${folder.id}`, {
+				version: folder.version,
+				is_expanded: newExpandedState,
+			});
+
+			folder.version = response.version;
+		} catch {
+			folderEl.classList.toggle("expanded");
+			contentEl.classList.toggle("expanded");
+
+			folder.is_expanded = isExpanded;
+
+			notify("Failed to save folder state", "error");
+		}
 	});
 
 	folderRename.addEventListener("click", async event => {

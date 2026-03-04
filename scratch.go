@@ -39,18 +39,20 @@ type ScratchDeleteRequest struct {
 }
 
 type Folder struct {
-	ID        int64   `json:"id"`
-	SortOrder float64 `json:"sort_order"`
-	Name      string  `json:"name"`
-	Version   string  `json:"version"`
-	UpdatedAt int64   `json:"updated_at"`
-	CreatedAt int64   `json:"created_at"`
+	ID         int64   `json:"id"`
+	SortOrder  float64 `json:"sort_order"`
+	IsExpanded bool    `json:"is_expanded"`
+	Name       string  `json:"name"`
+	Version    string  `json:"version"`
+	UpdatedAt  int64   `json:"updated_at"`
+	CreatedAt  int64   `json:"created_at"`
 }
 
 type FolderUpdateRequest struct {
-	Version   string   `json:"version"`
-	Name      *string  `json:"name"`
-	SortOrder *float64 `json:"sort_order"`
+	Version    string   `json:"version"`
+	Name       *string  `json:"name"`
+	SortOrder  *float64 `json:"sort_order"`
+	IsExpanded *bool    `json:"is_expanded"`
 }
 
 type FolderDeleteRequest struct {
@@ -261,9 +263,10 @@ func HandleFolderCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	okay(w, map[string]any{
-		"id":         folder.ID,
-		"version":    folder.Version,
-		"sort_order": folder.SortOrder,
+		"id":          folder.ID,
+		"version":     folder.Version,
+		"sort_order":  folder.SortOrder,
+		"is_expanded": folder.IsExpanded,
 	})
 }
 

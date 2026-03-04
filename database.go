@@ -36,6 +36,7 @@ func ConnectToDatabase() (*Database, error) {
 
 	table.AddColumn("name", "TEXT", "")
 	table.AddColumn("sort_order", "REAL", "DEFAULT 0")
+	table.AddColumn("is_expanded", "INTEGER", "DEFAULT 1")
 	table.AddColumn("version", "TEXT", "NOT NULL DEFAULT 'initial'")
 	table.AddColumn("updated_at", "INTEGER", "")
 	table.AddColumn("created_at", "INTEGER", "")
@@ -231,11 +232,13 @@ func (d *Database) CreateFolder(folder *Folder) error {
 		folder.SortOrder = float64(now)
 	}
 
-	return d.QueryRow("INSERT INTO folders (name, sort_order, version, updated_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id", folder.Name, folder.SortOrder, folder.Version, folder.UpdatedAt, folder.CreatedAt).Scan(&folder.ID)
+	folder.IsExpanded = true
+
+	return d.QueryRow("INSERT INTO folders (name, sort_order, is_expanded, version, updated_at, created_at) VALUES (?, ?, 1, ?, ?, ?) RETURNING id", folder.Name, folder.SortOrder, folder.Version, folder.UpdatedAt, folder.CreatedAt).Scan(&folder.ID)
 }
 
 func (d *Database) FindAllFolders(ctx context.Context) ([]Folder, error) {
-	rows, err := d.QueryContext(ctx, "SELECT id, sort_order, name, version, updated_at, created_at FROM folders ORDER BY sort_order ASC, name ASC")
+	rows, err := d.QueryContext(ctx, "SELECT id, sort_order, is_expanded, name, version, updated_at, created_at FROM folders ORDER BY sort_order ASC, name ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -245,12 +248,17 @@ func (d *Database) FindAllFolders(ctx context.Context) ([]Folder, error) {
 	folders := make([]Folder, 0)
 
 	for rows.Next() {
-		var f Folder
+		var (
+			f          Folder
+			isExpanded int
+		)
 
-		err = rows.Scan(&f.ID, &f.SortOrder, &f.Name, &f.Version, &f.UpdatedAt, &f.CreatedAt)
+		err = rows.Scan(&f.ID, &f.SortOrder, &isExpanded, &f.Name, &f.Version, &f.UpdatedAt, &f.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
+
+		f.IsExpanded = isExpanded == 1
 
 		folders = append(folders, f)
 	}
@@ -272,6 +280,16 @@ func (d *Database) UpdateFolder(id int64, version string, req *FolderUpdateReque
 	if req.SortOrder != nil {
 		fields = append(fields, "sort_order = ?")
 		args = append(args, *req.SortOrder)
+	}
+
+	if req.IsExpanded != nil {
+		fields = append(fields, "is_expanded = ?")
+
+		if *req.IsExpanded {
+			args = append(args, 1)
+		} else {
+			args = append(args, 0)
+		}
 	}
 
 	if len(fields) == 0 {
