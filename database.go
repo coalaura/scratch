@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/coalaura/schgo"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const DatabasePath = "scratch.db"
@@ -19,10 +20,30 @@ type Database struct {
 	*sql.DB
 }
 
-func ConnectToDatabase() (*Database, error) {
-	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", DatabasePath)
+type scratchSQLiteAdapter struct {
+	schgo.SQLiteAdapter
+}
 
-	db, err := sql.Open("sqlite", dsn)
+func (a *scratchSQLiteAdapter) NeedsModification(column *schgo.Column, existing *schgo.ColumnInfo) bool {
+	if column.Name == "note_id" && column.Type == "INTEGER REFERENCES scratches(id) ON DELETE CASCADE" {
+		// SQLite reports only INTEGER for a column's type, omitting its REFERENCES clause.
+		plainColumn := *column
+		plainColumn.Type = "INTEGER"
+
+		return a.SQLiteAdapter.NeedsModification(&plainColumn, existing)
+	}
+
+	return a.SQLiteAdapter.NeedsModification(column, existing)
+}
+
+func ConnectToDatabase() (*Database, error) {
+	return OpenDatabase(DatabasePath)
+}
+
+func OpenDatabase(path string) (*Database, error) {
+	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", path)
+
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -31,58 +52,49 @@ func ConnectToDatabase() (*Database, error) {
 	db.SetMaxIdleConns(16)
 	db.SetConnMaxLifetime(time.Hour)
 
-	table := NewSchemaTable("folders")
+	schema := schgo.NewSchemaWithAdapter(db, &scratchSQLiteAdapter{})
 
-	table.SetPrimary("id", "INTEGER", "AUTOINCREMENT")
+	table := schema.Table("folders")
 
-	table.AddColumn("name", "TEXT", "")
-	table.AddColumn("sort_order", "REAL", "DEFAULT 0")
-	table.AddColumn("is_expanded", "INTEGER", "DEFAULT 1")
-	table.AddColumn("version", "TEXT", "NOT NULL DEFAULT 'initial'")
-	table.AddColumn("updated_at", "INTEGER", "")
-	table.AddColumn("created_at", "INTEGER", "")
+	table.Primary("id", "INTEGER")
 
-	err = table.Apply(db)
+	table.Column("name", "TEXT")
+	table.Column("sort_order", "REAL").Default("0")
+	table.Column("is_expanded", "INTEGER").Default("1")
+	table.Column("version", "TEXT").NotNull().Default("initial")
+	table.Column("updated_at", "INTEGER")
+	table.Column("created_at", "INTEGER")
+
+	table = schema.Table("scratches")
+
+	table.Primary("id", "INTEGER")
+
+	table.Column("folder_id", "INTEGER").Default("0")
+	table.Column("sort_order", "REAL").Default("0")
+	table.Column("title", "TEXT")
+	table.Column("body", "TEXT")
+	table.Column("tags", "TEXT")
+	table.Column("version", "TEXT").NotNull().Default("initial")
+	table.Column("updated_at", "INTEGER")
+	table.Column("created_at", "INTEGER")
+
+	table = schema.Table("note_versions")
+
+	table.Primary("id", "INTEGER")
+
+	table.Column("note_id", "INTEGER REFERENCES scratches(id) ON DELETE CASCADE").NotNull()
+	table.Column("label", "TEXT").NotNull()
+	table.Column("title", "TEXT").NotNull()
+	table.Column("body", "TEXT").NotNull()
+	table.Column("tags", "TEXT").NotNull()
+	table.Column("created_at", "INTEGER").NotNull()
+
+	table.UniqueIndex("note_versions_note_label", "note_id", "label")
+
+	err = schema.Apply()
 	if err != nil {
-		return nil, err
-	}
+		db.Close()
 
-	table = NewSchemaTable("scratches")
-
-	table.SetPrimary("id", "INTEGER", "AUTOINCREMENT")
-
-	table.AddColumn("folder_id", "INTEGER", "DEFAULT 0")
-	table.AddColumn("sort_order", "REAL", "DEFAULT 0")
-	table.AddColumn("title", "TEXT", "")
-	table.AddColumn("body", "TEXT", "")
-	table.AddColumn("tags", "TEXT", "")
-	table.AddColumn("version", "TEXT", "NOT NULL DEFAULT 'initial'")
-	table.AddColumn("updated_at", "INTEGER", "")
-	table.AddColumn("created_at", "INTEGER", "")
-
-	err = table.Apply(db)
-	if err != nil {
-		return nil, err
-	}
-
-	table = NewSchemaTable("note_versions")
-
-	table.SetPrimary("id", "INTEGER", "AUTOINCREMENT")
-
-	table.AddColumn("note_id", "INTEGER", "NOT NULL REFERENCES scratches(id) ON DELETE CASCADE")
-	table.AddColumn("label", "TEXT", "NOT NULL")
-	table.AddColumn("title", "TEXT", "NOT NULL")
-	table.AddColumn("body", "TEXT", "NOT NULL")
-	table.AddColumn("tags", "TEXT", "NOT NULL")
-	table.AddColumn("created_at", "INTEGER", "NOT NULL")
-
-	err = table.Apply(db)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS note_versions_note_label ON note_versions (note_id, label)")
-	if err != nil {
 		return nil, err
 	}
 
