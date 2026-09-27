@@ -113,46 +113,6 @@ body {
 	z-index: 101;
 }
 
-.version-box {
-	width: min(900px, calc(100vw - 2rem));
-	max-height: min(90vh, 900px);
-	overflow-y: auto;
-	text-align: left;
-}
-
-.version-tags {
-	color: var(--mauve);
-	font-family: var(--font-mono);
-	font-size: 0.8rem;
-}
-
-#version-source {
-	width: 100%;
-	min-height: 100px;
-	height: 25vh;
-	resize: vertical;
-	background: var(--base);
-	color: var(--text);
-	border: 1px solid var(--surface1);
-	padding: 0.75rem;
-	font-family: var(--font-mono);
-}
-
-.version-preview {
-	min-height: 100px;
-	max-height: 30vh;
-	overflow: auto;
-	background: var(--base);
-	border: 1px solid var(--surface1);
-	padding: 0.75rem;
-	color: var(--subtext1);
-	line-height: 1.6;
-}
-
-.version-preview pre {
-	overflow: auto;
-}
-
 .auth-box h1 {
 	color: var(--mauve);
 	margin: 0;
@@ -201,6 +161,16 @@ button {
 button:hover {
 	background: var(--surface1);
 	border-color: var(--overlay0);
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+button:disabled:hover {
+	background: var(--surface0);
+	border-color: var(--surface1);
 }
 
 .btn-primary {
@@ -930,6 +900,41 @@ button:hover {
 	color: var(--mauve);
 }
 
+.version-list button.active {
+	background: var(--surface1);
+	border-color: var(--mauve);
+}
+
+.version-list button.current-version,
+.version-actions button.current-version {
+	color: var(--green);
+	border-color: var(--green);
+}
+
+.version-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 0.5rem 1rem;
+	padding: 0.5rem 0.75rem;
+	background: var(--mantle);
+	border-left: 2px solid var(--mauve);
+	color: var(--mauve);
+	font-size: 0.8rem;
+}
+
+.version-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.version-actions button {
+	padding: 3px 7px;
+	font-size: 0.75rem;
+}
+
 .split-view {
 	flex: 1;
 	display: flex;
@@ -973,7 +978,8 @@ button:hover {
 	display: none;
 }
 
-textarea#editor-body {
+textarea#editor-body,
+#version-source {
 	flex: 1;
 	background: var(--base);
 	color: var(--text);
@@ -985,6 +991,13 @@ textarea#editor-body {
 	line-height: 1.65;
 	outline: none;
 	min-height: 0;
+}
+
+#version-source {
+	margin: 0;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 #preview-body {

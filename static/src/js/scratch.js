@@ -11,6 +11,9 @@ const state = {
 	activeNoteId: null,
 	versions: [],
 	activeVersion: null,
+	versionPending: false,
+	versionRestoring: false,
+	versionRequest: 0,
 	savePromise: null,
 	copyTimeout: null,
 	selectController: null,
@@ -42,6 +45,7 @@ const $authLayer = document.getElementById("auth-layer"),
 	$inputTag = document.getElementById("input-tag"),
 	$tagContainer = document.getElementById("tag-container"),
 	$editorBody = document.getElementById("editor-body"),
+	$versionSource = document.getElementById("version-source"),
 	$previewBody = document.getElementById("preview-body"),
 	$status = document.getElementById("status-indicator"),
 	$resizerSidebar = document.getElementById("resizer-sidebar"),
@@ -71,12 +75,8 @@ const $authLayer = document.getElementById("auth-layer"),
 	$btnConfirmOk = document.getElementById("btn-confirm-ok"),
 	$versionList = document.getElementById("version-list"),
 	$tagVersionBtn = document.getElementById("btn-tag-version"),
-	$versionModal = document.getElementById("version-modal"),
-	$versionTitle = document.getElementById("version-title"),
-	$versionDate = document.getElementById("version-date"),
-	$versionTags = document.getElementById("version-tags"),
-	$versionSource = document.getElementById("version-source"),
-	$versionPreview = document.getElementById("version-preview"),
+	$versionBanner = document.getElementById("version-banner"),
+	$versionInfo = document.getElementById("version-info"),
 	$versionCloseBtn = document.getElementById("btn-version-close"),
 	$versionDeleteBtn = document.getElementById("btn-version-delete"),
 	$versionRestoreBtn = document.getElementById("btn-version-restore");
@@ -828,7 +828,7 @@ function updateActiveNoteClass(prevId, newId) {
 }
 
 function captureCurrentNote() {
-	if (!state.activeNoteId) {
+	if (!state.activeNoteId || state.activeVersion) {
 		return null;
 	}
 
@@ -1039,12 +1039,7 @@ async function selectNote(id, skipLoading = false) {
 		$splitView.classList.remove("loading");
 	}
 
-	$inputTitle.value = note.title;
-	$editorBody.value = note.body;
-
-	renderTags(note.tags || []);
-
-	renderPreview(note.body);
+	renderNoteContent(note);
 
 	state.lastSaved = {
 		title: note.title,
@@ -1061,8 +1056,27 @@ function renderPreview(md) {
 	$previewBody.innerHTML = DOMPurify.sanitize(marked.parse(md));
 }
 
+function renderNoteContent(note) {
+	$inputTitle.value = note.title;
+	$editorBody.value = note.body;
+
+	renderTags(note.tags || []);
+	renderPreview(note.body);
+}
+
 function renderVersions() {
 	$versionList.replaceChildren();
+
+	const currentButton = document.createElement("button");
+
+	currentButton.type = "button";
+	currentButton.textContent = "CURRENT";
+	currentButton.classList.add("current-version");
+	currentButton.classList.toggle("active", !state.activeVersion);
+
+	currentButton.addEventListener("click", closeVersion);
+
+	$versionList.appendChild(currentButton);
 
 	for (const version of state.versions) {
 		const button = document.createElement("button");
@@ -1070,6 +1084,7 @@ function renderVersions() {
 		button.type = "button";
 		button.textContent = version.label;
 		button.title = `${version.title || "Untitled"} · ${new Date(version.created_at * 1000).toLocaleString()}`;
+		button.classList.toggle("active", version.id === state.activeVersion?.id);
 
 		button.addEventListener("click", () => openVersion(version.id));
 
@@ -1092,46 +1107,105 @@ async function loadVersions(noteId) {
 	}
 }
 
-function closeVersion() {
-	state.activeVersion = null;
+function updateVersionView() {
+	const version = state.activeVersion,
+		readOnly = Boolean(version || state.versionPending || state.versionRestoring);
 
-	$versionModal.classList.add("hidden");
+	$inputTitle.readOnly = readOnly;
+
+	$editorBody.readOnly = readOnly;
+	$editorBody.classList.toggle("hidden", readOnly);
+
+	$versionSource.classList.toggle("hidden", !readOnly);
+	$versionSource.textContent = $editorBody.value;
+
+	$inputTag.disabled = readOnly;
+	$inputTag.classList.toggle("hidden", readOnly);
+
+	$tagVersionBtn.disabled = readOnly;
+	$deleteBtn.disabled = readOnly;
+
+	$versionBanner.classList.toggle("hidden", !version);
+
+	if (version) {
+		$versionInfo.textContent = `PREVIEWING "${version.label}" · Saved ${new Date(version.created_at * 1000).toLocaleString()} · READ ONLY`;
+	}
+
+	const note = state.notes.find(item => item.id === state.activeNoteId);
+
+	if (note) {
+		renderTags(version?.tags || note.tags || []);
+	}
+
+	renderVersions();
+}
+
+function closeVersion() {
+	state.versionRequest++;
+	state.versionPending = false;
+
+	if (state.activeVersion) {
+		const note = state.notes.find(item => item.id === state.activeNoteId);
+
+		state.activeVersion = null;
+
+		if (note) {
+			renderNoteContent(note);
+		}
+
+		setStatus("READY");
+	}
+
+	updateVersionView();
 }
 
 async function openVersion(versionId) {
 	const noteId = state.activeNoteId;
 
-	if (!noteId) {
+	if (!noteId || state.busy || state.activeVersion?.id === versionId) {
 		return;
 	}
 
+	const request = ++state.versionRequest;
+
+	state.versionPending = true;
+
+	updateVersionView();
+
 	try {
+		if (!await saveCurrentNote() || state.activeNoteId !== noteId || state.versionRequest !== request) {
+			return;
+		}
+
 		const version = await api("GET", `/-/note/${noteId}/versions/${versionId}`);
 
-		if (state.activeNoteId !== noteId) {
+		if (state.activeNoteId !== noteId || state.versionRequest !== request) {
 			return;
 		}
 
 		state.activeVersion = version;
 
-		$versionTitle.textContent = `${version.label} — ${version.title || "Untitled"}`;
+		renderNoteContent(version);
 
-		$versionDate.textContent = `Saved ${new Date(version.created_at * 1000).toLocaleString()}`;
+		$versionSource.scrollTop = 0;
+		$previewBody.scrollTop = 0;
 
-		$versionTags.textContent = version.tags.length ? `Tags: ${version.tags.join(", ")}` : "No tags";
-
-		$versionSource.value = version.body;
-
-		$versionPreview.innerHTML = DOMPurify.sanitize(marked.parse(version.body));
-
-		$versionModal.classList.remove("hidden");
+		setStatus("PREVIEW");
 	} catch (err) {
-		notify(`Failed to open version: ${err.message}`, "error");
+		if (state.activeNoteId === noteId && state.versionRequest === request) {
+			notify(`Failed to open version: ${err.message}`, "error");
+		}
+	} finally {
+		if (state.activeNoteId === noteId && state.versionRequest === request) {
+			state.versionPending = false;
+
+			updateVersionView();
+		}
 	}
 }
 
 async function tagCurrentVersion() {
-	if (state.busy || !state.activeNoteId) {
+	if (state.busy || !state.activeNoteId || state.activeVersion || state.versionPending) {
 		return;
 	}
 
@@ -1222,6 +1296,9 @@ async function restoreCurrentVersion() {
 	}
 
 	state.busy = true;
+	state.versionRestoring = true;
+
+	updateVersionView();
 
 	try {
 		const response = await api("POST", `/-/note/${noteId}/versions/${version.id}/restore`, { version: note.version });
@@ -1235,30 +1312,33 @@ async function restoreCurrentVersion() {
 			size: new TextEncoder().encode(version.body).length,
 		});
 
-		state.lastSaved = {
-			title: note.title,
-			body: note.body,
-			tags: [...note.tags],
-			version: note.version,
-		};
+		if (state.activeNoteId === noteId) {
+			state.lastSaved = {
+				title: note.title,
+				body: note.body,
+				tags: [...note.tags],
+				version: note.version,
+			};
 
-		$inputTitle.value = note.title;
+			if (state.activeVersion === version) {
+				closeVersion();
+			} else if (!state.activeVersion) {
+				renderNoteContent(note);
 
-		$editorBody.value = note.body;
+				setStatus("SAVED");
+			}
+		}
 
-		renderTags(note.tags);
-		renderPreview(note.body);
 		renderSidebar();
-
-		setStatus("SAVED");
-
-		closeVersion();
 
 		notify(`Restored "${version.label}"`);
 	} catch (err) {
 		notify(err.message === "Conflict" ? "Note was modified elsewhere. Please reload." : err.message, "error");
 	} finally {
 		state.busy = false;
+		state.versionRestoring = false;
+
+		updateVersionView();
 	}
 }
 
@@ -1278,21 +1358,27 @@ function renderTags(tags) {
 
 		chip.textContent = tag;
 
-		const remove = document.createElement("span");
+		if (!state.activeVersion && !state.versionPending && !state.versionRestoring) {
+			const remove = document.createElement("span");
 
-		remove.textContent = "×";
+			remove.textContent = "×";
 
-		remove.addEventListener("click", () => {
-			removeTag(tag);
-		});
+			remove.addEventListener("click", () => {
+				removeTag(tag);
+			});
 
-		chip.appendChild(remove);
+			chip.appendChild(remove);
+		}
 
 		$tagContainer.insertBefore(chip, $inputTag);
 	}
 }
 
 async function addTag(raw) {
+	if (state.activeVersion || state.versionPending || state.versionRestoring) {
+		return;
+	}
+
 	const tag = sanitizeTag(raw);
 
 	$inputTag.value = "";
@@ -1321,6 +1407,10 @@ async function addTag(raw) {
 }
 
 async function removeTag(tag) {
+	if (state.activeVersion || state.versionPending || state.versionRestoring) {
+		return;
+	}
+
 	const note = state.notes.find(_note => _note.id === state.activeNoteId);
 
 	if (!note || !note.tags) {
@@ -1392,11 +1482,21 @@ function restoreLayout() {
 }
 
 $editorBody.addEventListener("scroll", () => {
-	syncScroll($editorBody, $previewBody);
+	if (!$editorBody.classList.contains("hidden")) {
+		syncScroll($editorBody, $previewBody);
+	}
+});
+
+$versionSource.addEventListener("scroll", () => {
+	if (!$versionSource.classList.contains("hidden")) {
+		syncScroll($versionSource, $previewBody);
+	}
 });
 
 $previewBody.addEventListener("scroll", () => {
-	syncScroll($previewBody, $editorBody);
+	const source = $versionSource.classList.contains("hidden") ? $editorBody : $versionSource;
+
+	syncScroll($previewBody, source);
 });
 
 $loginBtn.addEventListener("click", () => {
@@ -1422,12 +1522,6 @@ $tagVersionBtn.addEventListener("click", tagCurrentVersion);
 $versionCloseBtn.addEventListener("click", closeVersion);
 $versionDeleteBtn.addEventListener("click", deleteCurrentVersion);
 $versionRestoreBtn.addEventListener("click", restoreCurrentVersion);
-
-$versionModal.addEventListener("click", event => {
-	if (event.target === $versionModal) {
-		closeVersion();
-	}
-});
 
 $newFolderBtn.addEventListener("click", async () => {
 	if (state.busy || $sidebar.classList.contains("is-loading")) {
@@ -1713,7 +1807,7 @@ $newBtn.addEventListener("click", async () => {
 });
 
 $deleteBtn.addEventListener("click", async () => {
-	if (state.busy) {
+	if (state.busy || state.activeVersion || state.versionPending) {
 		return;
 	}
 
