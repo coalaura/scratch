@@ -9,6 +9,9 @@ const state = {
 	folders: [],
 	busy: false,
 	activeNoteId: null,
+	versions: [],
+	activeVersion: null,
+	savePromise: null,
 	copyTimeout: null,
 	selectController: null,
 	draggedElement: null,
@@ -65,15 +68,27 @@ const $authLayer = document.getElementById("auth-layer"),
 	$confirmTitle = document.getElementById("confirm-title"),
 	$confirmMessage = document.getElementById("confirm-message"),
 	$btnConfirmCancel = document.getElementById("btn-confirm-cancel"),
-	$btnConfirmOk = document.getElementById("btn-confirm-ok");
+	$btnConfirmOk = document.getElementById("btn-confirm-ok"),
+	$versionList = document.getElementById("version-list"),
+	$tagVersionBtn = document.getElementById("btn-tag-version"),
+	$versionModal = document.getElementById("version-modal"),
+	$versionTitle = document.getElementById("version-title"),
+	$versionDate = document.getElementById("version-date"),
+	$versionTags = document.getElementById("version-tags"),
+	$versionSource = document.getElementById("version-source"),
+	$versionPreview = document.getElementById("version-preview"),
+	$versionCloseBtn = document.getElementById("btn-version-close"),
+	$versionDeleteBtn = document.getElementById("btn-version-delete"),
+	$versionRestoreBtn = document.getElementById("btn-version-restore");
 
 let ignoreScroll = false;
 
-function showConfirm(title, message) {
+function showConfirm(title, message, confirmText = "DELETE") {
 	return new Promise(resolve => {
 		$confirmTitle.textContent = title;
 
 		$confirmMessage.textContent = message;
+		$btnConfirmOk.textContent = confirmText;
 
 		$confirmModal.classList.remove("hidden");
 
@@ -242,7 +257,7 @@ async function api(method, path, body = null, opts = {}) {
 				if (data.error) {
 					msg = data.error;
 				}
-			} catch {}
+			} catch { }
 
 			throw new Error(msg);
 		}
@@ -855,13 +870,13 @@ function isDirty(snapshot) {
 
 async function saveSnapshot(snapshot) {
 	if (!snapshot || !isDirty(snapshot)) {
-		return;
+		return true;
 	}
 
 	const note = state.notes.find(_note => _note.id === snapshot.id);
 
 	if (!note) {
-		return;
+		return false;
 	}
 
 	note.title = snapshot.title;
@@ -893,6 +908,8 @@ async function saveSnapshot(snapshot) {
 		renderSidebar();
 
 		setStatus("SAVED");
+
+		return true;
 	} catch (err) {
 		if (err.message === "Conflict") {
 			setStatus("CONFLICT", true);
@@ -900,20 +917,43 @@ async function saveSnapshot(snapshot) {
 			notify("Note was modified elsewhere. Please reload.", "error");
 		} else {
 			setStatus("ERROR", true);
+			notify("Failed to save note", "error");
 		}
+
+		return false;
 	}
 }
 
 async function saveCurrentNote() {
-	const snapshot = captureCurrentNote();
+	const previous = state.savePromise;
 
-	await saveSnapshot(snapshot);
+	const pending = (async () => {
+		if (previous && !await previous) {
+			return false;
+		}
+
+		return saveSnapshot(captureCurrentNote());
+	})();
+
+	state.savePromise = pending;
+
+	try {
+		return await pending;
+	} finally {
+		if (state.savePromise === pending) {
+			state.savePromise = null;
+		}
+	}
 }
 
 async function closeNote() {
-	const snapshot = captureCurrentNote();
+	if (!await saveCurrentNote()) {
+		return;
+	}
 
 	const prevId = state.activeNoteId;
+
+	closeVersion();
 
 	state.activeNoteId = null;
 
@@ -923,8 +963,6 @@ async function closeNote() {
 	$emptyState.classList.remove("hidden");
 
 	updateActiveNoteClass(prevId, null);
-
-	await saveSnapshot(snapshot);
 }
 
 async function selectNote(id, skipLoading = false) {
@@ -932,10 +970,18 @@ async function selectNote(id, skipLoading = false) {
 		return;
 	}
 
-	const snapshot = captureCurrentNote(),
-		prevId = state.activeNoteId;
+	if (!await saveCurrentNote()) {
+		return;
+	}
+
+	const prevId = state.activeNoteId;
+
+	closeVersion();
 
 	state.activeNoteId = id;
+	state.versions = [];
+
+	renderVersions();
 
 	localStorage.setItem("scratch_active_note", id);
 
@@ -962,8 +1008,6 @@ async function selectNote(id, skipLoading = false) {
 	renderPreview("");
 
 	updateActiveNoteClass(prevId, id);
-
-	saveSnapshot(snapshot);
 
 	if (!skipLoading) {
 		$splitView.classList.add("loading");
@@ -1010,10 +1054,212 @@ async function selectNote(id, skipLoading = false) {
 	};
 
 	setStatus("READY");
+	loadVersions(id);
 }
 
 function renderPreview(md) {
 	$previewBody.innerHTML = DOMPurify.sanitize(marked.parse(md));
+}
+
+function renderVersions() {
+	$versionList.replaceChildren();
+
+	for (const version of state.versions) {
+		const button = document.createElement("button");
+
+		button.type = "button";
+		button.textContent = version.label;
+		button.title = `${version.title || "Untitled"} · ${new Date(version.created_at * 1000).toLocaleString()}`;
+
+		button.addEventListener("click", () => openVersion(version.id));
+
+		$versionList.appendChild(button);
+	}
+}
+
+async function loadVersions(noteId) {
+	try {
+		const versions = await api("GET", `/-/note/${noteId}/versions`);
+
+		if (state.activeNoteId === noteId) {
+			state.versions = versions;
+			renderVersions();
+		}
+	} catch (err) {
+		if (state.activeNoteId === noteId) {
+			notify(`Failed to load versions: ${err.message}`, "error");
+		}
+	}
+}
+
+function closeVersion() {
+	state.activeVersion = null;
+
+	$versionModal.classList.add("hidden");
+}
+
+async function openVersion(versionId) {
+	const noteId = state.activeNoteId;
+
+	if (!noteId) {
+		return;
+	}
+
+	try {
+		const version = await api("GET", `/-/note/${noteId}/versions/${versionId}`);
+
+		if (state.activeNoteId !== noteId) {
+			return;
+		}
+
+		state.activeVersion = version;
+
+		$versionTitle.textContent = `${version.label} — ${version.title || "Untitled"}`;
+
+		$versionDate.textContent = `Saved ${new Date(version.created_at * 1000).toLocaleString()}`;
+
+		$versionTags.textContent = version.tags.length ? `Tags: ${version.tags.join(", ")}` : "No tags";
+
+		$versionSource.value = version.body;
+
+		$versionPreview.innerHTML = DOMPurify.sanitize(marked.parse(version.body));
+
+		$versionModal.classList.remove("hidden");
+	} catch (err) {
+		notify(`Failed to open version: ${err.message}`, "error");
+	}
+}
+
+async function tagCurrentVersion() {
+	if (state.busy || !state.activeNoteId) {
+		return;
+	}
+
+	const noteId = state.activeNoteId,
+		label = (await showPrompt("Tag this version"))?.trim();
+
+	if (!label) {
+		return;
+	}
+
+	if (label.length > 80) {
+		notify("Version labels must be at most 80 characters", "error");
+
+		return;
+	}
+
+	if (state.activeNoteId !== noteId || !await saveCurrentNote()) {
+		return;
+	}
+
+	const note = state.notes.find(item => item.id === noteId);
+
+	if (!note) {
+		return;
+	}
+
+	state.busy = true;
+
+	try {
+		await api("POST", `/-/note/${noteId}/versions`, { label, version: note.version });
+
+		await loadVersions(noteId);
+
+		notify(`Tagged version "${label}"`);
+	} catch (err) {
+		notify(err.message === "Conflict" ? "Version label already exists, or the note changed elsewhere" : err.message, "error");
+	} finally {
+		state.busy = false;
+	}
+}
+
+async function deleteCurrentVersion() {
+	const version = state.activeVersion,
+		noteId = state.activeNoteId;
+
+	if (state.busy || !version || !noteId) {
+		return;
+	}
+
+	const confirmed = await showConfirm("Remove Tag", `Remove tagged version "${version.label}"? This cannot be undone.`);
+
+	if (!confirmed || state.activeNoteId !== noteId || state.activeVersion !== version) {
+		return;
+	}
+
+	state.busy = true;
+
+	try {
+		await api("DELETE", `/-/note/${noteId}/versions/${version.id}`);
+
+		closeVersion();
+		await loadVersions(noteId);
+	} catch (err) {
+		notify(`Failed to remove version: ${err.message}`, "error");
+	} finally {
+		state.busy = false;
+	}
+}
+
+async function restoreCurrentVersion() {
+	const version = state.activeVersion,
+		noteId = state.activeNoteId;
+
+	if (state.busy || !version || !noteId) {
+		return;
+	}
+
+	const confirmed = await showConfirm("Restore Version", `Replace the current note with "${version.label}"? The tagged version will remain saved.`, "RESTORE");
+
+	if (!confirmed || state.activeNoteId !== noteId || state.activeVersion !== version || !await saveCurrentNote()) {
+		return;
+	}
+
+	const note = state.notes.find(item => item.id === noteId);
+
+	if (!note) {
+		return;
+	}
+
+	state.busy = true;
+
+	try {
+		const response = await api("POST", `/-/note/${noteId}/versions/${version.id}/restore`, { version: note.version });
+
+		Object.assign(note, {
+			title: version.title,
+			body: version.body,
+			tags: [...version.tags],
+			version: response.version,
+			updated_at: Math.floor(Date.now() / 1000),
+			size: new TextEncoder().encode(version.body).length,
+		});
+
+		state.lastSaved = {
+			title: note.title,
+			body: note.body,
+			tags: [...note.tags],
+			version: note.version,
+		};
+
+		$inputTitle.value = note.title;
+
+		$editorBody.value = note.body;
+
+		renderTags(note.tags);
+		renderPreview(note.body);
+		renderSidebar();
+
+		setStatus("SAVED");
+
+		closeVersion();
+
+		notify(`Restored "${version.label}"`);
+	} catch (err) {
+		notify(err.message === "Conflict" ? "Note was modified elsewhere. Please reload." : err.message, "error");
+	} finally {
+		state.busy = false;
+	}
 }
 
 function sanitizeTag(raw) {
@@ -1170,6 +1416,17 @@ $logoutBtn.addEventListener("click", () => {
 	localStorage.removeItem("scratch_active_note");
 
 	location.reload();
+});
+
+$tagVersionBtn.addEventListener("click", tagCurrentVersion);
+$versionCloseBtn.addEventListener("click", closeVersion);
+$versionDeleteBtn.addEventListener("click", deleteCurrentVersion);
+$versionRestoreBtn.addEventListener("click", restoreCurrentVersion);
+
+$versionModal.addEventListener("click", event => {
+	if (event.target === $versionModal) {
+		closeVersion();
+	}
 });
 
 $newFolderBtn.addEventListener("click", async () => {
@@ -1443,7 +1700,7 @@ $newBtn.addEventListener("click", async () => {
 
 		renderSidebar();
 
-		selectNote(response.id, true);
+		await selectNote(response.id, true);
 
 		$inputTitle.focus();
 	} catch (err) {
@@ -1487,7 +1744,12 @@ $deleteBtn.addEventListener("click", async () => {
 
 		const deletedId = state.activeNoteId;
 
+		closeVersion();
+
 		state.activeNoteId = null;
+		state.versions = [];
+
+		renderVersions();
 
 		localStorage.removeItem("scratch_active_note");
 

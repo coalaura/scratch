@@ -57,6 +57,11 @@ func main() {
 		gr.Get("/-/note/{id}", HandleGet)
 		gr.Put("/-/note/{id}", HandleUpdate)
 		gr.Delete("/-/note/{id}", HandleDelete)
+		gr.Get("/-/note/{id}/versions", HandleNoteVersions)
+		gr.Post("/-/note/{id}/versions", HandleTagNoteVersion)
+		gr.Get("/-/note/{id}/versions/{versionID}", HandleNoteVersion)
+		gr.Delete("/-/note/{id}/versions/{versionID}", HandleDeleteNoteVersion)
+		gr.Post("/-/note/{id}/versions/{versionID}/restore", HandleRestoreNoteVersion)
 
 		gr.Post("/-/cleanup", HandleCleanup)
 	})

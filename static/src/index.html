@@ -50,6 +50,26 @@
 			</div>
 		</div>
 
+		<div id="version-modal" class="modal-layer hidden">
+			<div class="modal-box version-box">
+				<h2 id="version-title"></h2>
+
+				<p id="version-date" class="modal-message"></p>
+
+				<div id="version-tags" class="version-tags"></div>
+
+				<textarea id="version-source" readonly aria-label="Tagged version source"></textarea>
+
+				<div id="version-preview" class="version-preview"></div>
+
+				<div class="modal-actions">
+					<button id="btn-version-close">CLOSE</button>
+					<button id="btn-version-delete" class="btn-danger">REMOVE TAG</button>
+					<button id="btn-version-restore" class="btn-primary">RESTORE</button>
+				</div>
+			</div>
+		</div>
+
 		<div id="app-loader" class="app-loader">
 			<div class="spinner"></div>
 
@@ -111,6 +131,13 @@
 
 						<div class="tag-bar" id="tag-container">
 							<input type="text" id="input-tag" placeholder="+ tag" />
+						</div>
+						<div class="version-bar">
+							<span>VERSIONS</span>
+
+							<div id="version-list" class="version-list"></div>
+
+							<button id="btn-tag-version" title="Save the current note as a tagged version">+ TAG VERSION</button>
 						</div>
 					</header>
 

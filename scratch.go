@@ -233,7 +233,9 @@ func HandleCleanup(w http.ResponseWriter, r *http.Request) {
 	err := database.CleanupSortOrders(r.Context())
 	if err != nil {
 		abort(w, http.StatusInternalServerError, "failed to run cleanup")
+
 		log.Warnf("failed to run cleanup: %v\n", err)
+
 		return
 	}
 

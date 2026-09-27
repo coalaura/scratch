@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -72,7 +73,7 @@ func (t *SchemaTable) Apply(db *sql.DB) error {
 	var tableName string
 
 	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", t.name).Scan(&tableName)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		_, err = db.Exec(t.getCreateSQL())
 
 		return err

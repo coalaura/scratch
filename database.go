@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ type Database struct {
 }
 
 func ConnectToDatabase() (*Database, error) {
-	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", DatabasePath)
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", DatabasePath)
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -64,6 +65,27 @@ func ConnectToDatabase() (*Database, error) {
 		return nil, err
 	}
 
+	table = NewSchemaTable("note_versions")
+
+	table.SetPrimary("id", "INTEGER", "AUTOINCREMENT")
+
+	table.AddColumn("note_id", "INTEGER", "NOT NULL REFERENCES scratches(id) ON DELETE CASCADE")
+	table.AddColumn("label", "TEXT", "NOT NULL")
+	table.AddColumn("title", "TEXT", "NOT NULL")
+	table.AddColumn("body", "TEXT", "NOT NULL")
+	table.AddColumn("tags", "TEXT", "NOT NULL")
+	table.AddColumn("created_at", "INTEGER", "NOT NULL")
+
+	err = table.Apply(db)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS note_versions_note_label ON note_versions (note_id, label)")
+	if err != nil {
+		return nil, err
+	}
+
 	// Migrate sort_order for existing records to ensure correct dragging behavior
 	db.Exec("UPDATE folders SET sort_order = id * 1024 WHERE sort_order = 0")
 	db.Exec("UPDATE scratches SET sort_order = id * 1024 WHERE sort_order = 0")
@@ -80,7 +102,7 @@ func (d *Database) Find(ctx context.Context, id int64) (*Scratch, error) {
 
 	err := d.QueryRowContext(ctx, "SELECT id, folder_id, sort_order, title, body, LENGTH(CAST(body AS BLOB)) as size, tags, version, updated_at, created_at FROM scratches WHERE id = ? LIMIT 1", id).Scan(&sc.ID, &sc.FolderID, &sortOrder, &sc.Title, &sc.Body, &sc.Size, &tags, &sc.Version, &sc.UpdatedAt, &sc.CreatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 
