@@ -34,6 +34,7 @@ func main() {
 	defer database.Close()
 
 	log.Println("Preparing router...")
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.Recoverer)
@@ -82,7 +83,7 @@ func main() {
 		}
 	}()
 
-	log.WaitForInterrupt(false)
+	log.WaitForInterrupt()
 
 	log.Warnln("Shutting down...")
 
